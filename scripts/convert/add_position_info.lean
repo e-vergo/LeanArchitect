@@ -21,7 +21,7 @@ def runAddPositionInfo (p : Parsed) : IO UInt32 := do
     | .error e =>
       IO.eprintln s!"Ignoring node with error: {e}"
       return none
-  runEnvOfImports imports do
+  runEnvOfImports imports {} do
     let nodesWithPos ← nodes.mapM fun node => node.toNodeWithPos
     IO.println (nodesWithPos.map NodeWithPos.toJson |>.toJson)
   return 0
