@@ -7,14 +7,14 @@ import sys
 
 from loguru import logger
 
-from common import Node, NodeWithPos, convert_node_latex_to_markdown
+from common import Node, NodeWithPos
 from parse_latex import read_latex_file, parse_nodes, get_bibliography_files
 from modify_latex import write_latex_source
 from modify_lean import write_blueprint_attributes
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert existing leanblueprint file to lean-architect format.")
+    parser = argparse.ArgumentParser(description="Convert existing leanblueprint file to LeanArchitect format.")
     parser.add_argument(
         "--libraries",
         nargs="*",
@@ -32,7 +32,7 @@ def main():
     parser.add_argument(
         "--nodes",
         nargs="*",
-        help="The Lean declaration names of blueprint nodes to convert. If not provided, all nodes in the blueprint will be converted."
+        help="The LaTeX labels of blueprint nodes to convert. If not provided, all nodes in the blueprint will be converted."
     )
     parser.add_argument(
         "--blueprint_root",
@@ -62,12 +62,30 @@ def main():
         action="store_true",
         help="Add `uses` and `proofUses` to all nodes (otherwise only adds to nodes with `sorry`)."
     )
+    parser.add_argument(
+        "--options",
+        type=str,
+        default=None,
+        help="LeanOptions in JSON to pass to running the imports during add_position_info."
+    )
+    parser.add_argument(
+        "--docstring_indent",
+        type=int,
+        default=4,
+        help="The number of spaces to indent the `statement` and `proof` docstrings in `@[blueprint]`."
+    )
+    parser.add_argument(
+        "--docstring_style",
+        choices=["hanging", "compact"],
+        default="compact",
+        help="Whether to insert a line break after `/--` (hanging) or not (compact)."
+    )
 
     args = parser.parse_args()
 
     # Determine blueprint root directory
     if args.blueprint_root is None:
-        blueprint_root = Path("blueprint/src")
+        blueprint_root = Path("blueprint", "src")
         if not (blueprint_root / "web.tex").exists():
             blueprint_root = Path("blueprint")
             if not (blueprint_root / "web.tex").exists():
@@ -82,9 +100,9 @@ def main():
 
     # Parse the document into nodes in dependency graph
     logger.info("Parsing nodes in blueprint LaTeX")
-    nodes, name_to_raw_latex_sources, label_to_node = parse_nodes(source, args.convert_informal)
+    nodes, latex_label_to_raw_sources, label_to_nodes = parse_nodes(source, args.convert_informal)
     if args.nodes:
-        nodes = [node for node in nodes if node.name in args.nodes]
+        nodes = [node for node in nodes if node.latex_label in args.nodes]
 
     # Convert nodes to JSON
     logger.info("Converting nodes to JSON")
@@ -95,8 +113,14 @@ def main():
 
     # Add position information to nodes by passing to a Lean script
     logger.info("Adding position information to nodes using `lake exe add_position_info`")
+    add_position_info_command = [
+        "lake", "exe", "add_position_info",
+        "--imports", ",".join(args.modules),
+    ]
+    if args.options:
+        add_position_info_command += ["--options", args.options]
     nodes_with_pos_json = subprocess.run(
-        ["lake", "exe", "add_position_info", "--imports", ",".join(args.modules)],
+        add_position_info_command,
         input=nodes_json,
         text=True,
         check=True,
@@ -114,18 +138,13 @@ def main():
         NodeWithPos.model_validate(node) for node in json.loads(nodes_with_pos_json)
     ]
 
-    # Convert LaTeX to Markdown
-    logger.info("Converting LaTeX to Markdown using Pandoc")
-    for node in nodes_with_pos:
-        convert_node_latex_to_markdown(node)
-
     # Write the blueprint attributes to Lean files
     logger.info("Writing @[blueprint] attributes to Lean files")
-    write_blueprint_attributes(nodes_with_pos, args.modules, args.root_file, args.convert_informal, args.add_uses)
+    write_blueprint_attributes(nodes_with_pos, args.modules, args.root_file, args.convert_informal, args.add_uses, args.docstring_indent, args.docstring_style)
 
     # Write to LaTeX source
-    logger.info("Replacing LaTeX theorems with \\inputleannode")
-    write_latex_source(nodes_with_pos, name_to_raw_latex_sources, label_to_node, blueprint_root, args.convert_informal, args.libraries)
+    logger.info("Replacing LaTeX nodes with \\inputleannode")
+    write_latex_source(nodes_with_pos, latex_label_to_raw_sources, blueprint_root, args.convert_informal, args.libraries)
 
 
 if __name__ == "__main__":

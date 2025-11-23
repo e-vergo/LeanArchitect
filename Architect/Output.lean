@@ -9,178 +9,28 @@ namespace Architect
 section ToLatex
 
 /-!
-Here, we convert nodes and docstrings to LaTeX.
-The main difficulty is converting Markdown to LaTeX, which we describe below.
+Conversion from Lean nodes to LaTeX.
 -/
 
 abbrev Latex := String
 
 /-!
-We convert docstrings of declarations and modules to LaTeX.
-Besides the usual Markdown features, we also support citations using square brackets
-and references using inline code, by having custom commands and postprocessing steps,
-as follows:
-
-1. Using MD4Lean, we parse the markdown.
-2. If possible, we convert bracketed citations (e.g. [taylorwiles]) to \cite{taylorwiles} commands.
-3. If possible, we convert inline code with a constant (e.g. `abc`) to \ref{abc} commands.
-4. We convert the markdown to LaTeX macro definitions as output.
-
-**TODO**: Support doc-gen4 style named citations like [abc][def].
+We convert nodes to LaTeX.
 
 The output provides the following macros:
-- `\inputleannode{name}`: Inputs the theorem or definition with Lean name `name`.
-- `\inputleanmodule{Module}`: Inputs the entire module (containing nodes and module docstrings) with module name `Module`.s
-
-The long-term goal for lean-architect is to migrate to Verso
-and not have to output to LaTeX at all.
-Here, this would mean using docstring parsing from Verso instead
-(which similarly uses MD4Lean to parse the docstrings),
-and it has support for elaborating code blocks.
-However, AFAIK it currently does not support citations in docstrings.
+- `\inputleannode{name}`: Inputs the theorem or definition with label `name`.
+- `\inputleanmodule{Module}`: Inputs the entire module (containing nodes in it) with module name `Module`.
 -/
 
-register_option blueprint.bracketedCitations : Bool := {
-  defValue := true,
-  descr := "Whether to register square-bracketed content as citations (e.g. `[taylorwiles]`). \
-            You should set this in the `leanOptions` field of the lakefile."
-}
+variable {m} [Monad m] [MonadEnv m]
 
-register_option blueprint.refCommand : String := {
-  defValue := "ref",
-  descr := "The LaTeX command to use for references (e.g. `ref` or `cref`). \
-            You should set this in the `leanOptions` field of the lakefile."
-}
-
-register_option blueprint.citeCommand : String := {
-  defValue := "cite",
-  descr := "The LaTeX command to use for citations (e.g. `cite` or `citep`). \
-            You should set this in the `leanOptions` field of the lakefile."
-}
-
-register_option blueprint.resolveInlineCode : Bool := {
-  defValue := true,
-  descr := "Whether to try to resolve inline code to references (e.g. `abc` to `\\ref{abc}`). \
-            You should set this in the `leanOptions` field of the lakefile."
-}
-
-variable {m} [Monad m] [MonadOptions m]
-
-/-- Escapes a string in LaTeX for all LaTeX environments (text, math, leancode, links, etc.). -/
-def escapeForLatexBasic (s : String) : String :=
-  s.replace "#" "\\#" |>.replace "%" "\\%"
-
-/-- Escapes a string in LaTeX for text. -/
-def escapeForLatexText (s : String) : String :=
-  escapeForLatexBasic s |>.replace "_" "\\_" |>.replace "^" "\\^{}"
-
-/-- Escape `#` and convert brackets `[taylorwiles]` to `\cite{taylorwiles}` commands. -/
-partial def postprocessMarkdownText (s : String) : m String := do
-  let s := escapeForLatexText s
-  if !blueprint.bracketedCitations.get (← getOptions) then
-    return s
-  else
-    let citeCommand := blueprint.citeCommand.get (← getOptions)
-    let allBracketed := findAllEnclosed s '[' ']' (fun c => c == '[' || c == '(')  -- do not convert the first bracket in `[a][b]` or in `[a](b)`
-    return allBracketed.foldl (init := s) fun s bracketed =>
-      s.replace s!"[{bracketed}]" (s!"\\" ++ citeCommand ++ "{" ++ bracketed ++ "}")
-where
-  findAllEnclosed (s : String) (bracketStart bracketEnd : Char) (notFollowedBy : Char → Bool) (i : String.Pos := 0) (ret : Array String := ∅) : Array String :=
-    let lps := ⟨(s.posOfAux bracketStart s.endPos i).byteIdx + 1⟩
-    if lps < s.endPos then
-      let lpe := s.posOfAux bracketEnd s.endPos lps
-      let nextPos : String.Pos := ⟨lpe.byteIdx + 1⟩
-      if lpe < s.endPos && (!nextPos.isValid s || !notFollowedBy (s.get nextPos)) then
-        let bracketed := Substring.toString ⟨s, lps, lpe⟩
-        findAllEnclosed s bracketStart bracketEnd notFollowedBy lpe (ret.push bracketed)
-      else
-        ret
-    else
-      ret
-
-def removeNameFirstComponent : Name → Option Name
-  | .str .anonymous _ => some .anonymous
-  | .num .anonymous _ => some .anonymous
-  | .str p s => removeNameFirstComponent p |>.map fun p => .str p s
-  | .num p i => removeNameFirstComponent p |>.map fun p => .num p i
-  | .anonymous => none
-
-open MD4Lean in
-def parseMarkdown (markdown : String) : Option MD4Lean.Document :=
-  parse markdown (parserFlags :=
-    -- GitHub-flavored Markdown dialect
-    MD_DIALECT_GITHUB |||
-    -- Support $...$ and $$...$$
-    MD_FLAG_LATEXMATHSPANS |||
-    -- Disable raw HTML
-    MD_FLAG_NOHTML |||
-    -- Docstrings can be group indented, which we do not want to parse as code blocks
-    MD_FLAG_NOINDENTEDCODEBLOCKS)
-
-/-- Parse and convert markdown to LaTeX using MD4Lean with postprocessing steps as above. -/
-partial def markdownToLatex (markdown : String) : m Latex :=
-  match parseMarkdown markdown with
-  | none => return markdown
-  | some doc => documentToLatex doc
-where
-  documentToLatex (doc : MD4Lean.Document) : m Latex := do
-    return "\n\n".intercalate (← doc.blocks.mapM blockToLatex).toList
-  blockToLatex (block : MD4Lean.Block) : m Latex := do
-    match block with
-    | .p texts =>
-      return String.join (← texts.mapM textToLatex).toList
-    | .ul _tight _mark items =>
-      return "\\begin{itemize}" ++ "\n\n".intercalate (← items.mapM itemToLatex).toList ++ "\\end{itemize}"
-    | .ol _tight _start _mark items =>
-      return "\\begin{enumerate}" ++ "\n\n".intercalate (← items.mapM itemToLatex).toList ++ "\\end{enumerate}"
-    | .hr => return "\\midrule"
-    | .header level texts =>
-      let headerCommand := match level with | 0 | 1 => "chapter" | 2 => "section" | 3 => "subsection" | 4 => "subsubsection" | 5 => "paragraph" | _ => "subparagraph"
-      return "\\" ++ headerCommand ++ "{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-    | .code _info _lang _fenceChar content =>
-      -- It seems \begin{verbatim} ... \end{verbatim} is not supported in macros,
-      -- so we split to lines and convert each line as inline code.
-      let content := String.join content.toList
-      let lines ← (content.splitOn "\n").mapM fun line => textToLatex (.code #[line])
-      return "\n\\\\\n".intercalate lines
-    | .html content => return String.join content.toList
-    | .blockquote content => return "\\begin{quote}" ++ "\n\n".intercalate (← content.mapM blockToLatex).toList ++ "\\end{quote}"
-    | .table _head _body => return "[lean-architect: table not supported yet]"
-  textToLatex (text : MD4Lean.Text) : m Latex := do
-    match text with
-    | .normal content | .br content | .softbr content | .entity content =>
-      postprocessMarkdownText content
-    | .nullchar => return ""
-    | .em texts => return "\\emph{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-    | .strong texts => return "\\textbf{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-    | .u texts => return "\\ul{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-    | .a href _title _isAuto texts => return "\\href{" ++ String.join (href.map attrTextToLatex).toList ++ "}{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-    | .img src _title _alt => return "\\includegraphics{" ++ String.join (src.map attrTextToLatex).toList ++ "}"
-    -- \leancode converts inline code to \ref where possible. If not a valid reference, this defaults to \texttt{\detokenize{content}}
-    -- (see `latexPreamble`; **TODO**: use \verb or \Verb instead if possible).
-    | .code content => return "\\leancode{" ++ String.join (content.toList.map escapeForLatexBasic) ++ "}"
-    | .del texts => return "\\st{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-    | .latexMath content => return "$" ++ String.join (content.toList.map escapeForLatexBasic) ++ "$"
-    | .latexMathDisplay content =>
-      let math := String.join (content.toList.map escapeForLatexBasic)
-      -- $$...$$ is translated to $$...$$ in LaTeX
-      -- But $$\begin{align}...\end{align}$$ is translated to \begin{align}...\end{align} instead without $$
-      -- This is because we want to support environments beyond the basic math environment $$...$$.
-      -- This list is from https://github.com/jgm/pandoc/blob/main/src/Text/Pandoc/Writers/LaTeX.hs
-      let displayMathEnvs := ["align", "align*", "flalign", "flalign*", "alignat", "alignat*", "dmath", "dmath*", "dgroup", "dgroup*", "darray", "darray*", "gather", "gather*", "multline", "multline*", "split", "subequations", "equation", "equation*", "eqnarray", "displaymath"]
-      if displayMathEnvs.any fun env => math.startsWith ("\\begin{" ++ env ++ "}") then
-        return math
-      else
-        return s!"$${math}$$"
-    | .wikiLink target texts => return "\\href{" ++ String.join (target.map attrTextToLatex).toList ++ "}{" ++ String.join (← texts.mapM textToLatex).toList ++ "}"
-  attrTextToLatex (attrText : MD4Lean.AttrText) : Latex :=
-    match attrText with
-    | .normal content | .entity content => escapeForLatexBasic content
-    | .nullchar => ""
-  itemToLatex (item : MD4Lean.Li MD4Lean.Block) : m Latex := do
-    match item with
-    | .li _isTask _taskChar _taskMarkOffset blocks =>
-      return "\\item " ++ "\n\n".intercalate (← blocks.mapM blockToLatex).toList
+/-- Since the LaTeX previously lived in the outer blueprint but now in a macro, previous commands like `\url{https://example.com#tag}`
+throw an error at `#`. We need to escape it here. We also replace `\verb` with `\Verb` which is friendlier to macros. -/
+def preprocessLatex (s : String) : String :=
+  -- First replace `\#` with `#` in case the user already escaped it.
+  let s' := s.replace "\\#" "#" |>.replace "#" "\\#"
+  let s'' := s'.replace "\\verb" "\\Verb"
+  s''
 
 def moduleToRelPath (module : Name) (ext : String) : System.FilePath :=
   modToFilePath "module" module ext
@@ -192,17 +42,18 @@ def NodePart.toLatex (part : NodePart) (title : Option String) (additionalConten
   let mut out := ""
   out := out ++ "\\begin{" ++ part.latexEnv ++ "}"
   if let some title := title then
-    out := out ++ s!"[{← markdownToLatex title}]"
+    out := out ++ s!"[{preprocessLatex title}]"
+  out := out ++ "\n"
 
+  if !part.uses.isEmpty then
+    out := out ++ "\\uses{" ++ ",".intercalate part.uses.toList ++ "}\n"
   out := out ++ additionalContent
   if part.leanOk then
-    out := out ++ "\\leanok{}"
-  if !part.uses.isEmpty || !part.usesRaw.isEmpty then
-    out := out ++ "\\uses{" ++ ",".intercalate (part.uses.map (·.toString) ++ part.usesRaw).toList ++ "}"
+    out := out ++ "\\leanok{}\n"
 
-  out := out ++ (← markdownToLatex part.text)
+  out := out ++ (preprocessLatex part.text).trim ++ "\n"
 
-  out := out ++ "\\end{" ++ part.latexEnv ++ "}"
+  out := out ++ "\\end{" ++ part.latexEnv ++ "}\n"
   return out
 
 def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
@@ -212,13 +63,13 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     | _, _ => ""
 
   let mut addLatex := ""
-  addLatex := addLatex ++ "\\lean{" ++ node.name.toString ++ "}"
-  addLatex := addLatex ++ "\\label{" ++ node.name.toString ++ "}"
+  addLatex := addLatex ++ "\\label{" ++ node.latexLabel ++ "}\n"
+  addLatex := addLatex ++ "\\lean{" ++ ",".intercalate ((getLeanNamesOfLatexLabel (← getEnv) node.latexLabel).map toString).toList ++ "}\n"
   if node.notReady then
-    addLatex := addLatex ++ "\\notready"
+    addLatex := addLatex ++ "\\notready\n"
   if let some d := node.discussion then
-    addLatex := addLatex ++ "\\discussion{" ++ toString d ++ "}"
-  addLatex := addLatex ++ s!"\n% at {posStr}\n"
+    addLatex := addLatex ++ "\\discussion{" ++ toString d ++ "}\n"
+  addLatex := addLatex ++ s!"% at {posStr}\n"
 
   let statementLatex ← node.statement.toLatex node.title addLatex
   match node.proof with
@@ -229,21 +80,14 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
 
 def NodeWithPos.toLatexHeader (node : NodeWithPos) : m Latex := do
   let latex ← node.toLatex
-  return "\\newleannode{" ++ node.name.toString ++ "}{" ++ latex ++ "}"
+  return "\\newleannode{" ++ node.latexLabel ++ "}{\n" ++ latex ++ "}"
 
 def BlueprintContent.toLatex : BlueprintContent → m Latex
-  | .node n => return "\\inputleannode{" ++ n.name.toString ++ "}"
-  | .modDoc d => markdownToLatex d.doc
+  | .node n => return "\\inputleannode{" ++ n.latexLabel ++ "}"
+  | .modDoc _ => return ""
 
 def latexPreamble : m Latex := do
-  let refCommand := blueprint.refCommand.get (← getOptions)
-  let resolveInlineCode := blueprint.resolveInlineCode.get (← getOptions)
-  let leancodeCommand :=
-    if resolveInlineCode then
-      "\\@ifundefined{leannode@#1}{\\texttt{\\detokenize{#1}}}{\\" ++ refCommand ++ "{#1}}"
-    else
-      "\\texttt{\\detokenize{#1}}"
-  return "%%% THIS FILE IS AUTO-GENERATED BY LEAN-ARCHITECT. %%%
+  return "%%% THIS FILE IS AUTO-GENERATED BY LeanArchitect. %%%
 
 %%% Macro definitions for \\inputleannode, \\inputleanmodule %%%
 
@@ -255,9 +99,6 @@ def latexPreamble : m Latex := do
 % \\inputleannode{name} inputs a Lean node
 \\providecommand{\\inputleannode}[1]{%
   \\csname leannode@#1\\endcsname}
-
-% \\leancode{name} is like \\texttt, but resolves to a reference to a Lean node if possible
-\\providecommand{\\leancode}[1]{" ++ leancodeCommand ++ "}
 
 % \\newleanmodule{module}{latex} defines a new Lean module
 \\providecommand{\\newleanmodule}[2]{%
@@ -324,6 +165,7 @@ private def locationToJson (location : DeclarationLocation) : Json :=
 def NodeWithPos.toJson (node : NodeWithPos) : Json :=
   json% {
     "name": $(node.name),
+    "latexLabel": $(node.latexLabel),
     "statement": $(node.statement),
     "proof": $(node.proof),
     "notReady": $(node.notReady),

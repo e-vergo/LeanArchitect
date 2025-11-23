@@ -71,7 +71,7 @@ def indexCmd := `[Cli|
 ]
 
 def blueprintCmd : Cmd := `[Cli|
-  "lean-architect" NOOP;
+  "LeanArchitect" NOOP;
   "A blueprint generator for Lean 4."
 
   SUBCOMMANDS:

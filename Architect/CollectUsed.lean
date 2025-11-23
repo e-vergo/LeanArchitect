@@ -5,7 +5,10 @@ import Architect.Basic
 This is similar to Lean's `collectAxioms`, but collects nodes in the blueprint (plus all axioms)
 rather than just axioms.
 
-TODO: maybe run this at LaTeX output time rather than during @[blueprint] tagging
+TODO: I suspect this is slow.
+  Either run this at LaTeX output time rather than during @[blueprint] tagging
+  (in which case we can't check for cyclic dependencies),
+  or use some caching (map from declaration to used blueprint nodes).
 -/
 
 namespace Architect

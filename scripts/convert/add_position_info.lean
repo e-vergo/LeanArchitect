@@ -11,6 +11,9 @@ open Lean Cli Architect
 def runAddPositionInfo (p : Parsed) : IO UInt32 := do
   let some imports := p.flag? "imports" |>.bind (·.as? (Array ModuleName))
     | IO.throwServerError "--imports flag is required"
+  let options : LeanOptions ← match p.flag? "options" with
+    | some o => IO.ofExcept (Json.parse (o.as! String) >>= fromJson?)
+    | none => pure (∅ : LeanOptions)
   let stdin ← IO.getStdin
   let input ← stdin.readToEnd
   let .arr jsons ← IO.ofExcept (Json.parse input)
@@ -21,7 +24,7 @@ def runAddPositionInfo (p : Parsed) : IO UInt32 := do
     | .error e =>
       IO.eprintln s!"Ignoring node with error: {e}"
       return none
-  runEnvOfImports imports {} do
+  runEnvOfImports imports options.toOptions do
     let nodesWithPos ← nodes.mapM fun node => node.toNodeWithPos
     IO.println (nodesWithPos.map NodeWithPos.toJson |>.toJson)
   return 0
@@ -32,6 +35,7 @@ def addPositionInfoCmd : Cmd := `[Cli|
 
   FLAGS:
     imports : Array ModuleName; "Comma-separated Lean modules to import."
+    options : String; "LeanOptions in JSON to pass to running the imports."
 ]
 
 def main (args : List String) : IO UInt32 := do
