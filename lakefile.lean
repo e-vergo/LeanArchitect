@@ -1,7 +1,7 @@
 import Lake
 open System Lake DSL
 
-package «lean-architect»
+package LeanArchitect
 
 lean_lib Architect
 
@@ -11,6 +11,7 @@ lean_exe extract_blueprint where
   supportInterpreter := true
 
 /-- Utility script used for converting from existing blueprint format. -/
+@[default_target]
 lean_exe add_position_info where
   root := `scripts.convert.add_position_info
   supportInterpreter := true
@@ -110,7 +111,7 @@ private def runCmd (cmd : String) (args : Array String) : ScriptM Unit := do
   if exitCode != 0 then
     throw <| IO.userError s!"Error running command {cmd} {args.toList}"
 
-/-- A script to convert an existing blueprint to lean-architect format,
+/-- A script to convert an existing blueprint to LeanArchitect format,
 modifying the Lean and LaTeX source files in place. -/
 script blueprintConvert (args : List String) do
   let architect ← Architect.get
@@ -123,11 +124,13 @@ script blueprintConvert (args : List String) do
   else  -- this else is needed for rootMods[0] to work
   for lib in libs do
     runCmd (← getLake).toString #["build", lib.name.toString]
-  IO.eprintln "Calling Python script to convert blueprint to lean-architect format"
+  let leanOptions := Lean.toJson (← getRootPackage).leanOptions |>.compress
+  IO.eprintln "Calling Python script to convert blueprint to LeanArchitect format"
   runCmd "python3" <|
     #[convertScript.toString] ++
     #["--libraries"] ++ libs.map (·.name.toString) ++
     #["--modules"] ++ rootMods.map (·.name.toString) ++
     #["--root_file", rootMods[0].leanFile.toString] ++
+    #["--options", leanOptions] ++
     args
   return 0

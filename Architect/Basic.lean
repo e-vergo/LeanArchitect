@@ -15,9 +15,7 @@ structure NodePart where
   /-- The natural language description of this part. -/
   text : String
   /-- The names of nodes that this node depends on. -/
-  uses : Array Name
-  /-- Additional raw labels of nodes that this node depends on, specified by `uses := ["label"]`. -/
-  usesRaw : Array String := #[]
+  uses : Array String
   /-- The LaTeX environment to use for this part. -/
   latexEnv : String
 deriving Inhabited, Repr, FromJson, ToJson, ToExpr
@@ -26,6 +24,8 @@ deriving Inhabited, Repr, FromJson, ToJson, ToExpr
 structure Node where
   /-- The Lean name of the tagged constant. -/
   name : Name
+  /-- The LaTeX label of the node. Multiple nodes can have the same label. -/
+  latexLabel : String
   /-- The statement of this node. -/
   statement : NodePart
   /-- The proof of this node. -/
@@ -64,7 +64,33 @@ def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
   return { node with hasLean := true, location, file }
 
 /-- Environment extension that stores the nodes of the blueprint. -/
-initialize blueprintExt : NameMapExtension Node ← registerNameMapExtension _
+initialize blueprintExt : NameMapExtension Node ←
+  registerNameMapExtension Node
+
+namespace LatexLabelToLeanNames
+
+abbrev State := SMap String (Array Name)
+abbrev Entry := String × Name
+
+private def addEntryFn (s : State) (e : Entry) : State :=
+  match s.find? e.1 with
+  | none => s.insert e.1 #[e.2]
+  | some ns => s.insert e.1 (ns.push e.2)
+
+end LatexLabelToLeanNames
+
+open LatexLabelToLeanNames in
+initialize latexLabelToLeanNamesExt : SimplePersistentEnvExtension Entry State ←
+  registerSimplePersistentEnvExtension {
+    addEntryFn := addEntryFn
+    addImportedFn := fun es => mkStateFromImportedEntries addEntryFn {} es |>.switch
+  }
+
+def addLeanNameOfLatexLabel (env : Environment) (latexLabel : String) (name : Name) : Environment :=
+  latexLabelToLeanNamesExt.addEntry env (latexLabel, name)
+
+def getLeanNamesOfLatexLabel (env : Environment) (latexLabel : String) : Array Name :=
+  latexLabelToLeanNamesExt.getState env |>.findD latexLabel #[]
 
 section ResolveConst
 

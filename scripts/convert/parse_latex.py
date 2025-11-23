@@ -61,8 +61,14 @@ class SourceInfo:
     leanok: bool
     notready: bool
     mathlibok: bool
-    lean: Optional[str]
+    lean: Optional[list[str]]
     discussion: Optional[int]
+
+
+def strip_empty_lines(text: str) -> str:
+    text = re.sub(r"^(?:[ \t]*\r?\n)+", "", text)
+    text = re.sub(r"(?:\r?\n[ \t]*)+$", "", text)
+    return text
 
 
 def parse_and_remove_blueprint_commands(source: str) -> tuple[SourceInfo, str]:
@@ -72,6 +78,7 @@ def parse_and_remove_blueprint_commands(source: str) -> tuple[SourceInfo, str]:
     def remove_environments(source: str) -> str:
         # Note: this is only approximate, e.g. it does not handle nested same environments correctly
         return re.sub(r"\\begin\s*\{(.*?)\}.*?\\end\s*\{\1\}", r"", source, flags=re.DOTALL)
+    # TODO: label should be handled separately, because it may appear multiple times in nested environments
     label, _ = find_and_remove_command_argument("label", remove_environments(source))
     source = source.replace(f"\\label{{{label}}}", "")  # remove \label from source manually
     # plastexdepgraph commands
@@ -82,9 +89,9 @@ def parse_and_remove_blueprint_commands(source: str) -> tuple[SourceInfo, str]:
     leanok, source = find_and_remove_command("leanok", source)
     notready, source = find_and_remove_command("notready", source)
     mathlibok, source = find_and_remove_command("mathlibok", source)
-    lean, source = find_and_remove_command_argument("lean", source)
+    lean, source = find_and_remove_command_arguments("lean", source)
     discussion, source = find_and_remove_command_argument("discussion", source)
-    source = source.strip()
+    source = strip_empty_lines(source)
     return SourceInfo(
         label=label,
         uses=uses,
@@ -107,59 +114,13 @@ def try_int(s: Optional[str]) -> Optional[int]:
         return None
 
 
-def convert_ref_to_verb(source: str, label_to_node: dict[str, Node]):
-    r"""Convert \ref{latex-label-of-node} to \verb{lean_name_of_node} if possible,
-    as a preprocessing step for converting to Markdown.
-
-    This is so that in the output, [\[long_theorem_name\]](#long_theorem_name) becomes
-    `long_theorem_name` instead, and the latter can be automatically converted to
-    links/refs by both doc-gen4 and lean-architect.
-    """
-    def replace_ref(match):
-        labels = [label.strip() for label in match.group(1).split(",")]
-        output = []
-        for label in labels:
-            if label in label_to_node:
-                # Note: using \verb instead of \texttt because Pandoc would e.g. process the
-                # braces and quotes in \texttt.
-                output.append(f"\\verb|{label_to_node[label].name}|")
-            elif "_" in label:
-                # If the label contains an underscore (e.g. \label{sec_label}), we assume it is still a Lean name and wrap it in \verb,
-                # even though it is not in the blueprint graph. This is then converted to `sec_label` instead of \ref{sec_label}, which
-                # avoids errors with escaping the underscore in later conversion from Markdown to LaTeX.
-                output.append(f"\\verb|{label}|")
-            else:
-                # Retain the use of \ref
-                output.append(f"\\ref{{{label}}}")
-        return ", ".join(output)
-    # From https://github.com/jgm/pandoc/blob/main/src/Text/Pandoc/Readers/LaTeX/Inline.hs
-    ref_commands = ["ref", "cref", "Cref", "vref", "eqref", "autoref"]
-    source = re.sub(r"\\(?:" + "|".join(ref_commands) + r")\s*\{([^\}]*)\}", replace_ref, source)
-    source = source.strip()
-    return source
-
-
-def convert_latex_label_to_lean_name(node_part: NodePart, label_to_node: dict[str, Node]):
-    """Converts the `uses` and `\\ref` commands to reference Lean names rather than LaTeX labels."""
-    for use in list(node_part.uses_raw):
-        # Convert from LaTeX labels in uses_raw to Lean names in uses, if the used node is formalized.
-        # Otherwise, keep the LaTeX label in uses_raw.
-        if use in label_to_node:
-            used_node = label_to_node[use]
-            node_part.uses_raw.remove(use)
-            node_part.uses.add(used_node.name)
-    node_part.text = convert_ref_to_verb(node_part.text, label_to_node)
-
-
-def remove_nonbreaking_spaces(source: str) -> str:
-    source = re.sub(r"(?<!\\)~", r" ", source)
-    source = source.strip()
-    return source
-
-
-def process_source(source: str) -> tuple[SourceInfo, str]:
-    """Returns the source TeX of the node, removing custom commands."""
-    source = remove_nonbreaking_spaces(source)
+warned_verb = False
+def process_source(source: str):
+    global warned_verb
+    if "\\verb" in source and not warned_verb:
+        warned_verb = True
+        logger.warning("Converting \\verb to \\Verb which is friendlier to macros.")
+    source = source.replace("\\verb", "\\Verb")
     return parse_and_remove_blueprint_commands(source)
 
 
@@ -177,7 +138,7 @@ def generate_new_lean_name(visited_names: set[str], base: Optional[str]) -> str:
     return generate_new_lean_name(visited_names, f"{base}_{uuid.uuid4().hex}")
 
 
-def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[str, list[str]], dict[str, Node]]:
+def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[str, list[str]], dict[str, list[Node]]]:
     """Parse the nodes in the LaTeX source."""
     match = re.search(r"\\usepackage\s*\[[^\]]*\bthms\s*=\s*([^,\]\}]*)", source)
     if match:
@@ -190,16 +151,16 @@ def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[s
         re.DOTALL
     )
 
-    # Maps matches[i] to node, or None if the node is not in Lean and convert_informal is False
-    match_idx_to_node: dict[int, Optional[Node]] = {}
+    # Maps matches[i] to nodes
+    match_idx_to_label: dict[int, str] = {}
 
     # Parsed nodes
     nodes: list[Node] = []
-    name_to_node: dict[str, Node] = {}
-    label_to_node: dict[str, Node] = {}
+    seen_lean_names: set[str] = set()
+    seen_latex_labels: set[str] = set()
 
     # Raw sources of each name, for modifying LaTeX later
-    name_to_raw_sources: dict[str, list[str]] = {}
+    latex_label_to_raw_sources: dict[str, list[str]] = {}
 
     # Parse all theorem and definition statements
     for i, match in enumerate(ENV_PATTERN.finditer(source)):
@@ -211,34 +172,51 @@ def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[s
         if "%" in source[:match.span()[0]].split("\n")[-1].strip():
             continue
 
-        source_info, node_source = process_source(content)
+        source_info, node_source = parse_and_remove_blueprint_commands(content)
+
+        label = source_info.label
+        if label is None:
+            logger.warning(f"Did not find a LaTeX \\label for the node with \\lean{{{', '.join(source_info.lean or [])}}}; ignoring.")
+            continue
+        match_idx_to_label[i] = label
+        if label in seen_latex_labels:
+            logger.warning(f"\\label{{{label}}} appears multiple times in the blueprint; merging.")
+        seen_latex_labels.add(label)
+        latex_label_to_raw_sources.setdefault(label, []).append(match.group(0))
+
         if source_info.lean is not None:
-            name = source_info.lean
-            if source_info.label is None:
-                logger.warning(f"Did not find a LaTeX label for {name}")
+            names = source_info.lean
         elif not convert_informal:
-            match_idx_to_node[i] = None
+            # Ignore proof node in first pass
             continue
         else:
-            name = generate_new_lean_name(set(name_to_node.keys()), source_info.label)
-        name_to_raw_sources.setdefault(name, []).append(match.group(0))
+            names = [generate_new_lean_name(seen_lean_names, label)]
 
-        if name in name_to_node:
-            logger.warning(f"Lean name {_quote(name)} occurs in blueprint multiple times; only keeping the first.")
-            node = name_to_node[name]
-        else:
+        for name in names:
+            if name in seen_lean_names:
+                logger.warning(f"\\lean{{{name}}} occurs in blueprint multiple times; only keeping the first.")
+                continue
+            seen_lean_names.add(name)
             statement = NodePart(
-                lean_ok=source_info.leanok, text=node_source,
-                uses=set(), uses_raw=set(source_info.uses),  # to be converted in the next loop
+                lean_ok=source_info.leanok,
+                text=node_source,
+                uses=set(source_info.uses),
                 latex_env=env
             )
-            node = Node(name=name, statement=statement, proof=None, not_ready=source_info.notready, discussion=source_info.discussion, title=title)
+            node = Node(
+                name=name,
+                latex_label=label,
+                statement=statement,
+                proof=None,  # to be added in the next loop
+                title=title,
+                not_ready=source_info.notready,
+                discussion=source_info.discussion,
+            )
             nodes.append(node)
-            name_to_node[name] = node
 
-        match_idx_to_node[i] = node
-        if source_info.label is not None:
-            label_to_node[source_info.label] = node
+    label_to_nodes: dict[str, list[Node]] = {}
+    for node in nodes:
+        label_to_nodes.setdefault(node.latex_label, []).append(node)
 
     # Parse all proof statements
     for i, match in enumerate(ENV_PATTERN.finditer(source)):
@@ -250,33 +228,28 @@ def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[s
         if "%" in source[:match.span()[0]].split("\n")[-1].strip():
             continue
 
-        source_info, node_source = process_source(content)
+        source_info, node_source = parse_and_remove_blueprint_commands(content)
         proves = source_info.proves
         if proves is not None:  # manually specified \proves in plastexdepgraph
-            proved = label_to_node[proves]
+            proved_label = proves
         else:
-            if i - 1 in match_idx_to_node:
-                proved = match_idx_to_node[i - 1]
-                if proved is None:  # informal-only node, ignore
-                    continue
+            if i - 1 in match_idx_to_label:
+                proved_label = match_idx_to_label[i - 1]
             else:
                 logger.warning(f"Cannot determine the statement proved by: {node_source}")
                 continue
+        latex_label_to_raw_sources[proved_label].append(match.group(0))
 
-        proved.proof = NodePart(
-            lean_ok=source_info.leanok, text=node_source,
-            uses=set(), uses_raw=set(source_info.uses),  # to be converted in the next loop
-            latex_env=env
-        )
-        name_to_raw_sources[proved.name].append(match.group(0))
+        if proved_label in label_to_nodes:
+            for proved in label_to_nodes[proved_label]:
+                proved.proof = NodePart(
+                    lean_ok=source_info.leanok,
+                    text=node_source,
+                    uses=set(source_info.uses),
+                    latex_env=env
+                )
 
-    # Convert node \label to node.name
-    for node in nodes:
-        convert_latex_label_to_lean_name(node.statement, label_to_node)
-        if node.proof is not None:
-            convert_latex_label_to_lean_name(node.proof, label_to_node)
-
-    return nodes, name_to_raw_sources, label_to_node
+    return nodes, latex_label_to_raw_sources, label_to_nodes
 
 
 def get_bibliography_files(source: str) -> list[Path]:

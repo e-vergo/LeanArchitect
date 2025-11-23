@@ -2,7 +2,7 @@ import subprocess
 import re
 import json
 import sys
-from typing import Optional
+from typing import Optional, Literal
 
 from loguru import logger
 
@@ -28,22 +28,12 @@ class NodePart(BaseSchema):
     lean_ok: bool
     text: str
     uses: set[str]
-    uses_raw: set[str]
     latex_env: str
 
-    def all_uses(self) -> list[str]:
-        return [use for use in self.uses] + [_quote(use) for use in self.uses_raw]
-
-def make_docstring(text: str, indent: int = 0) -> str:
-    text = text.strip()
-    text = text.replace("\n", f"\n{' ' * indent}")
-    if "\n" in text:
-        return f"/--\n{' ' * indent}{text}\n{' ' * indent}-/"
-    else:
-        return f"/-- {text} -/"
 
 class Node(BaseSchema):
     name: str  # Lean identifier (unique)
+    latex_label: str
     statement: NodePart
     proof: Optional[NodePart]
     not_ready: bool
@@ -56,26 +46,24 @@ class Node(BaseSchema):
 
     def to_lean_attribute(
         self,
-        add_statement_text: bool = True, add_uses: bool = True, add_uses_raw: bool = True,
-        add_proof_text: bool = True, add_proof_uses: bool = True, add_proof_uses_raw: bool = True
+        add_statement_text: bool = True, add_uses: bool = True,
+        add_proof_text: bool = True, add_proof_uses: bool = True,
+        docstring_indent: int = 2, docstring_style: Literal["hanging", "compact"] = "hanging"
     ) -> str:
         configs = []
         # See Architect/Attribute.lean for the options
+        configs.append(_quote(self.latex_label))
         if self.title:
-            configs.append(_quote(self.title))
+            configs.append(f"(title := {_quote(self.title)})")
         if add_statement_text and self.statement.text.strip():
-            configs.append(f"(statement := {make_docstring(self.statement.text, indent=2)})")
+            configs.append(f"(statement := {make_docstring(self.statement.text, indent=docstring_indent, style=docstring_style, start_column=len("  (statement := "))})")
         if add_uses and self.statement.uses:
-            configs.append(f"(uses := [{', '.join(self.statement.uses)}])")
-        if add_uses_raw and self.statement.uses_raw:
-            configs.append(f"(uses := [{', '.join(_quote(use) for use in self.statement.uses_raw)}])")
+            configs.append(f"(uses := [{_wrap_list([_quote(use) for use in self.statement.uses], indent=4, start_column=len('  (uses := ['))}])")
         if self.proof is not None:
             if add_proof_text and self.proof.text.strip():
-                configs.append(f"(proof := {make_docstring(self.proof.text, indent=2)})")
+                configs.append(f"(proof := {make_docstring(self.proof.text, indent=docstring_indent, style=docstring_style, start_column=len("  (proof := "))})")
             if add_proof_uses and self.proof.uses:
-                configs.append(f"(proofUses := [{', '.join(self.proof.uses)}])")
-            if add_proof_uses_raw and self.proof.uses_raw:
-                configs.append(f"(proofUses := [{', '.join(_quote(use) for use in self.proof.uses_raw)}])")
+                configs.append(f"(proofUses := [{_wrap_list([_quote(use) for use in self.proof.uses], indent=4, start_column=len('  (proofUses := ['))}])")
         if self.not_ready:
             configs.append("(notReady := true)")
         if self.discussion:
@@ -103,61 +91,58 @@ class NodeWithPos(Node):
     file: Optional[str]
 
 
-PANDOC_DEFAULT_WIDTH = 100
+LEAN_MAX_COLUMNS = 100
 
-def pandoc_convert(from_format: str, to_format: str, input: str) -> str:
-    result = subprocess.run(
-        [
-            "pandoc", "-f", from_format, "-t", to_format,
-            f"--columns={PANDOC_DEFAULT_WIDTH}"
-        ],
-        check=True,
-        input=input,
-        stdout=subprocess.PIPE,
-        stderr=sys.stderr,
-        text=True,
-    )
-    return result.stdout
+def _indent(lines: list[str], indent: int) -> list[str]:
+    if not lines:
+        return []
+    common_indent = min(len(line) - len(line.lstrip()) for line in lines if line.strip())
+    dedented = [line[common_indent:] for line in lines]
+    return [f"{' ' * indent}{line}" for line in dedented]
 
-def pandoc_convert_latex_to_markdown(latex: str) -> str:
-    # Preprocess all citation commands to \cite
-    # From https://github.com/jgm/pandoc/blob/main/src/Text/Pandoc/Readers/LaTeX/Citation.hs
-    cite_commands = ["cite", "Cite", "citep", "citep*", "citeal", "citealp", "citealp*", "autocite", "smartcite", "footcite", "parencite", "supercite", "footcitetext", "citeyearpar", "citeyear", "autocite*", "cite*", "parencite*", "textcite", "citet", "citet*", "citealt", "citealt*", "textcites", "cites", "autocites", "footcites", "parencites", "supercites", "footcitetexts", "Autocite", "Smartcite", "Footcite", "Parencite", "Supercite", "Footcitetext", "Citeyearpar", "Citeyear", "Autocite*", "Cite*", "Parencite*", "Textcite", "Textcites", "Cites", "Autocites", "Footcites", "Parencites", "Supercites", "Footcitetexts", "citetext", "citeauthor", "nocite"]
-    latex = re.sub(
-        r"\\(?:" + "|".join(c.replace("*", r"\*") for c in cite_commands) + r")\s*(\[.*?\])?\s*\{(.*?)\}",
-        r"\\cite\1{\2}",
-        latex
-    )
-
-    # Call Pandoc to convert LaTeX to Markdown
-    converted = pandoc_convert(
-        "latex",
-        # Pandoc's Markdown flavor, disable raw HTML, disable attributes
-        "markdown-raw_html-raw_attribute-bracketed_spans-native_divs-native_spans-link_attributes",
-        latex
-    )
-
-    # Fix for pandoc bug: https://github.com/jgm/pandoc/issues/11257
-    # Remove paragraph breaks before \end.
-    converted = re.sub(r"\s*\n\s*\\end\s*\{(.*?)\}", r"\n\\end{\1}", converted)
-
-    # Postprocess outputs of \ref commands
-    # Here, the \ref commands that refer to depgraph nodes were already replaced with \verb in parse_latex.py
-    # Pandoc converts the rest (e.g. \ref{chapter-label}) to [\[chapter-label\]](#chapter-label), which we convert back to \ref{chapter-label}
-    converted = re.sub(r"\[\\\[(.*?)\\\]\]\(\#\1\)", r"\\ref{\1}", converted)
-    # Postprocess citations: [@a; @b text] -> [a] [b], text
-    def replace_cite(match):
-        parts = match.group(1).split(";")
-        tags = " ".join(f"[{p.strip().removeprefix('@')}]" for p in parts)
-        rest = match.group(2).strip()
-        if rest:
-            return f"{tags}, {rest}"
+def _wrap(line: str, indent: Optional[int], start_column: int, indent_first_line: bool = True) -> list[str]:
+    """Wrap a single line of text to a list of indented lines.
+    If indent is not provided, infer from the number of leading spaces.
+    """
+    if indent is None:
+        indent = len(line) - len(line.lstrip())
+    words = line.lstrip().split(" ")
+    if not words:
+        return [""]
+    res = []
+    cur = (" " * indent if indent_first_line else "") + words[0]
+    for word in words[1:]:
+        if (start_column if not res else 0) + len(cur) + 1 + len(word) > LEAN_MAX_COLUMNS:
+            res.append(cur)
+            cur = " " * indent + word
         else:
-            return tags
-    converted = re.sub(r"\[((?:@[^\s;]+)(?:;\s*@[^\s;]+)*)(.*?)\]", replace_cite, converted)
-    return converted.strip()
+            cur += " " + word
+    res.append(cur)
+    return res
 
-def convert_node_latex_to_markdown(node: Node):
-    node.statement.text = pandoc_convert_latex_to_markdown(node.statement.text)
-    if node.proof is not None:
-        node.proof.text = pandoc_convert_latex_to_markdown(node.proof.text)
+def _wrap_list(items: list[str], indent: int, start_column: int) -> str:
+    text = ", ".join(items)
+    return "\n".join(_wrap(text, indent, start_column)).strip()
+
+def make_docstring(text: str, indent: int = 0, style: Literal["hanging", "compact"] = "hanging", start_column: int = 0) -> str:
+    # If fits in one line, then use /-- {text} -/
+    if "\n" not in text.strip() and start_column + len(f"/-- {text.strip()} -/") <= LEAN_MAX_COLUMNS:
+        return f"/-- {text.strip()} -/"
+
+    # Remove common indentation
+    lines = [line.rstrip() for line in text.splitlines()]
+    lines = _indent(lines, indent)
+    if style == "hanging":
+        lines = [subline for line in lines for subline in _wrap(line, None, 0)]
+    else:
+        lines[-1] += " -/"
+        lines = [
+            subline
+            for i, line in enumerate(lines)
+            for subline in (_wrap(line, None, start_column + len("/-- "), indent_first_line=False) if i == 0 else _wrap(line, None, 0))
+        ]
+    text = "\n".join(lines)
+    if style == "hanging":
+        return f"/--\n{text}\n{' ' * indent}-/"
+    else:
+        return f"/-- {text}"
