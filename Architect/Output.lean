@@ -38,18 +38,25 @@ def moduleToRelPath (module : Name) (ext : String) : System.FilePath :=
 def libraryToRelPath (library : Name) (ext : String) : System.FilePath :=
   System.mkFilePath ["library", library.toString (escape := false)] |>.addExtension ext
 
-def NodePart.toLatex (part : NodePart) (title : Option String) (additionalContent : String) : m Latex := do
+/-- Merges and converts an array of `NodePart` to LaTeX. It is assumed that `part ∈ allParts`. -/
+def NodePart.toLatex (part : NodePart) (allParts : Array NodePart := #[part])
+    (title : Option String := none) (additionalContent : String := "") : m Latex := do
   let mut out := ""
   out := out ++ "\\begin{" ++ part.latexEnv ++ "}"
   if let some title := title then
     out := out ++ s!"[{preprocessLatex title}]"
   out := out ++ "\n"
 
-  if !part.uses.isEmpty then
-    out := out ++ "\\uses{" ++ ",".intercalate part.uses.toList ++ "}\n"
+  -- Take union of uses
+  let uses := allParts.flatMap (·.uses)
+  unless uses.isEmpty do
+    out := out ++ "\\uses{" ++ ",".intercalate uses.toList ++ "}\n"
+
   out := out ++ additionalContent
-  if part.leanOk then
-    out := out ++ "\\leanok{}\n"
+
+  -- \leanok only if all parts are leanOk
+  if allParts.all (·.leanOk) then
+    out := out ++ "\\leanok\n"
 
   out := out ++ (preprocessLatex part.text).trim ++ "\n"
 
@@ -57,25 +64,31 @@ def NodePart.toLatex (part : NodePart) (title : Option String) (additionalConten
   return out
 
 def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
-  -- position string as annotation
-  let posStr := match node.file, node.location with
-    | some file, some location => s!"{file}:{location.range.pos.line}.{location.range.pos.column}-{location.range.endPos.line}.{location.range.endPos.column}"
-    | _, _ => ""
+  -- In the output, we merge the Lean nodes corresponding to the same LaTeX label.
+  let env ← getEnv
+  let allLeanNames := getLeanNamesOfLatexLabel env node.latexLabel
+  let allNodes := allLeanNames.filterMap fun name => blueprintExt.find? env name
 
   let mut addLatex := ""
   addLatex := addLatex ++ "\\label{" ++ node.latexLabel ++ "}\n"
-  addLatex := addLatex ++ "\\lean{" ++ ",".intercalate ((getLeanNamesOfLatexLabel (← getEnv) node.latexLabel).map toString).toList ++ "}\n"
+
+  addLatex := addLatex ++ "\\lean{" ++ ",".intercalate (allLeanNames.map toString).toList ++ "}\n"
   if node.notReady then
     addLatex := addLatex ++ "\\notready\n"
   if let some d := node.discussion then
     addLatex := addLatex ++ "\\discussion{" ++ toString d ++ "}\n"
+
+  -- position string as annotation
+  let posStr := match node.file, node.location with
+    | some file, some location => s!"{file}:{location.range.pos.line}.{location.range.pos.column}-{location.range.endPos.line}.{location.range.endPos.column}"
+    | _, _ => ""
   addLatex := addLatex ++ s!"% at {posStr}\n"
 
-  let statementLatex ← node.statement.toLatex node.title addLatex
+  let statementLatex ← node.statement.toLatex (allNodes.map (·.statement)) node.title addLatex
   match node.proof with
   | none => return statementLatex
   | some proof =>
-    let proofLatex ← proof.toLatex none ""
+    let proofLatex ← proof.toLatex (allNodes.filterMap (·.proof))
     return statementLatex ++ proofLatex
 
 def NodeWithPos.toLatexHeader (node : NodeWithPos) : m Latex := do

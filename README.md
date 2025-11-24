@@ -226,7 +226,7 @@ The output will be in `.lake/build/blueprint`.
 
 ## Miscellaneous
 
-- We encourage to use `\Verb` for inline verbatim code instead of `\verb`, and avoid using `\begin{verbatim}`. You also need to add
+- You should use `\Verb` for inline verbatim code instead of `\verb`, and avoid using `\begin{verbatim}`. This is because `\Verb` from `fvextra` has better support when used inside macros. You also need to add
 
   ```latex
   \providecommand{\Verb}{\verb}
@@ -239,6 +239,16 @@ The output will be in `.lake/build/blueprint`.
   ```
 
   to `blueprint/src/macros/print.tex`. These are automatic if you use `blueprintConvert`.
+
+- Multiple Lean declarations may correspond to the same node in the blueprint, by
+  specifying the same label as:
+
+  ```lean
+  @[blueprint "thm:a"] theorem a_part_one : ...
+  @[blueprint "thm:a"] theorem a_part_two : ...
+  ```
+
+  The output will use `\lean{a_part_one, a_part_two}`, and `\leanok` only if both `a_part_one` and `a_part_two` are sorryless, and the `\uses` will also be merged.
 
 ## TODO
 

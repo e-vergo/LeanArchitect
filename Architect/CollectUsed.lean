@@ -17,19 +17,24 @@ open Lean
 
 namespace CollectUsed
 
+structure Context where
+  env : Environment
+  root : Name
+
 structure State where
   visited : NameSet    := {}
   used    : Array Name := #[]
 
-abbrev M := ReaderT Environment $ StateM State
+abbrev M := ReaderT Context $ StateM State
 
 partial def collect (c : Name) : M Unit := do
   let collectExpr (e : Expr) : M Unit := e.getUsedConstants.forM collect
   let s ← get
   unless s.visited.contains c do
     modify fun s => { s with visited := s.visited.insert c }
-    let env ← read
-    if (blueprintExt.find? env c).isSome then
+    let { env, root } ← read
+    -- When we collect constants used by `a`, we don't just want to return `{a}`.
+    if c != root && (blueprintExt.find? env c).isSome then
       modify fun s => { s with used := s.used.push c }
     else
       -- This line is `match env.checked.get.find? c with` in Lean.CollectAxioms
@@ -47,7 +52,7 @@ partial def collect (c : Name) : M Unit := do
 end CollectUsed
 
 /--
-Returns the transitive set of blueprint nodes that a constant depends on,
+Returns the irreflexive transitive set of blueprint nodes that a constant depends on,
 as a pair of sets (constants used by type, constants used by value).
 They are made disjoint except that possibly both contain `sorryAx`.
 -/
@@ -59,11 +64,11 @@ def collectUsed [Monad m] [MonadEnv m] [MonadError m] (constName : Name) :
   -- Collect constants used by statement
   let info ← getConstInfo constName
   for c in info.type.getUsedConstants do
-    (_, s) := ((CollectUsed.collect c).run env).run s
+    (_, s) := ((CollectUsed.collect c).run { env, root := constName }).run s
   let typeUsed := NameSet.ofArray s.used
 
   -- Collect constants used by proof
-  (_, s) := ((CollectUsed.collect constName).run env).run s
+  (_, s) := ((CollectUsed.collect constName).run { env, root := constName }).run s
   let valueUsed := NameSet.ofArray s.used
 
   return (typeUsed, valueUsed \ typeUsed.erase ``sorryAx)
