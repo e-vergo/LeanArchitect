@@ -155,13 +155,14 @@ def mkStatementPart (_name : Name) (latexLabel : String) (cfg : Config) (hasProo
   let leanOk := !used.contains ``sorryAx
   -- Used constants = blueprint constants specified by `uses :=` + used in the statement
   let uses := cfg.uses.foldl (·.insert ·) used
-  let usesLabels := uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
+  let usesLabels : Std.HashSet String := .ofArray <|
+    uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
   let statement := cfg.statement.getD ""
   checkLatex statement
   return {
     leanOk
     text := statement
-    uses := usesLabels.erase latexLabel ++ cfg.usesRaw
+    uses := (usesLabels.erase latexLabel).toArray ++ cfg.usesRaw
     latexEnv := cfg.latexEnv.getD (if hasProof then "theorem" else "definition")
   }
 
@@ -170,19 +171,24 @@ def mkProofPart (name : Name) (latexLabel : String) (cfg : Config) (used : NameS
   let leanOk := !used.contains ``sorryAx
   -- Used constants = blueprint constants specified by `proofUses :=` + used in the statement
   let uses := cfg.proofUses.foldl (·.insert ·) used
-  let usesLabels := uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
+  let usesLabels : Std.HashSet String := .ofArray <|
+    uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
   -- Use proof docstring for proof text
   let proof := cfg.proof.getD ("\n\n".intercalate (getProofDocString env name).toList)
   checkLatex proof
   return {
     leanOk
     text := proof
-    uses := usesLabels.erase latexLabel ++ cfg.proofUsesRaw
+    uses := (usesLabels.erase latexLabel).toArray ++ cfg.proofUsesRaw
     latexEnv := "proof"
   }
 
 def mkNode (name : Name) (cfg : Config) : CoreM Node := do
+  trace[blueprint.debug] "mkNode {.ofConstName name} {repr cfg}"
   let (statementUsed, proofUsed) ← collectUsed name
+  trace[blueprint.debug] "Collected used constants:
+    {.ofArray (statementUsed.toArray.map .ofConstName)}
+    {.ofArray (proofUsed.toArray.map .ofConstName)}"
   let latexLabel := cfg.latexLabel.getD name.toString
   if ← hasProof name cfg then
     let statement ← mkStatementPart name latexLabel cfg .true statementUsed
@@ -205,7 +211,9 @@ If ignored, this would create a cycle and then an error during `leanblueprint we
 (Note: this check will only raise an error if `blueprint.ignoreUnknownConstants` is true,
 which may permit cyclic dependencies.)
 -/
-partial def checkCyclicUses (newLabel : String) (label : String) (visited : Std.HashSet String := ∅) (path : Array String := #[]) : CoreM Unit := do
+partial def checkCyclicUses {m} [Monad m] [MonadEnv m] [MonadError m]
+    (newLabel : String) (label : String)
+    (visited : Std.HashSet String := ∅) (path : Array String := #[]) : m Unit := do
   let path' := path.push label
   if visited.contains label then
     if path.contains label then
@@ -240,7 +248,7 @@ initialize registerBuiltinAttribute {
 
       -- pushInfoLeaf <| .ofTermInfo {
       --   elaborator := .anonymous, lctx := {}, expectedType? := none,
-      --   stx, expr := mkStrLit (repr node).pretty }
+      --   stx, expr := toExpr node }
   }
 
 end Architect

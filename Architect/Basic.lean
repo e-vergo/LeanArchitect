@@ -7,6 +7,7 @@ open Lean Elab
 namespace Architect
 
 initialize registerTraceClass `blueprint
+initialize registerTraceClass `blueprint.debug
 
 /-- The statement or proof of a node. -/
 structure NodePart where

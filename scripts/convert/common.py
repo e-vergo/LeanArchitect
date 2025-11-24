@@ -100,12 +100,14 @@ def _indent(lines: list[str], indent: int) -> list[str]:
     dedented = [line[common_indent:] for line in lines]
     return [f"{' ' * indent}{line}" for line in dedented]
 
-def _wrap(line: str, indent: Optional[int], start_column: int, indent_first_line: bool = True) -> list[str]:
+def _wrap(line: str, indent: Optional[int], start_column: int, indent_first_line: bool = True, latex_mode: bool = True) -> list[str]:
     """Wrap a single line of text to a list of indented lines.
     If indent is not provided, infer from the number of leading spaces.
+    Respects LaTeX comments if latex_mode is True.
     """
     if indent is None:
         indent = len(line) - len(line.lstrip())
+    is_comment = False
     words = line.lstrip().split(" ")
     if not words:
         return [""]
@@ -114,7 +116,13 @@ def _wrap(line: str, indent: Optional[int], start_column: int, indent_first_line
     for word in words[1:]:
         if (start_column if not res else 0) + len(cur) + 1 + len(word) > LEAN_MAX_COLUMNS:
             res.append(cur)
-            cur = " " * indent + word
+            # If unescaped % is in the current line, then switch to is_comment
+            if latex_mode and re.search(r"[^\\]%", cur):
+                is_comment = True
+            if is_comment:
+                cur = " " * indent + "% " + word
+            else:
+                cur = " " * indent + word
         else:
             cur += " " + word
     res.append(cur)
@@ -122,7 +130,7 @@ def _wrap(line: str, indent: Optional[int], start_column: int, indent_first_line
 
 def _wrap_list(items: list[str], indent: int, start_column: int) -> str:
     text = ", ".join(items)
-    return "\n".join(_wrap(text, indent, start_column)).strip()
+    return "\n".join(_wrap(text, indent, start_column, latex_mode=False)).strip()
 
 def make_docstring(text: str, indent: int = 0, style: Literal["hanging", "compact"] = "hanging", start_column: int = 0) -> str:
     # If fits in one line, then use /-- {text} -/

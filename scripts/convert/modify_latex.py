@@ -25,24 +25,30 @@ def write_latex_source(
             file.write_text(file_content)
 
     # Add import to macros file
-    macros_file = blueprint_root / "macros" / "common.tex"
-    new_macros = "\n".join(f"\\input{{../../.lake/build/blueprint/library/{library}}}" for library in libraries)
-    if macros_file.exists():
-        macros_file.write_text(macros_file.read_text() + "\n" + new_macros + "\n")
+    macros_files_common = [blueprint_root / "macros" / "common.tex", blueprint_root / "preamble" / "common.tex"]
+    common_macros = "\n".join(f"\\input{{../../.lake/build/blueprint/library/{library}}}" for library in libraries)
+    for file in macros_files_common:
+        if file.exists():
+            file.write_text(file.read_text() + "\n" + common_macros + "\n")
+            break
     else:
-        logger.warning(f"{macros_file} not found; please add the following to anywhere in the start of LaTeX blueprint:\n{new_macros}")
+        logger.warning(f"{macros_files_common[0]} not found; please add the following to anywhere in the start of LaTeX blueprint:\n{common_macros}")
 
-    macros_file_print = blueprint_root / "macros" / "print.tex"
+    macros_files_print = [blueprint_root / "macros" / "print.tex", blueprint_root / "preamble" / "print.tex"]
     print_macros = "\\usepackage{fvextra}"
-    if macros_file_print.exists():
-        macros_file_print.write_text(macros_file_print.read_text() + "\n" + print_macros + "\n")
+    for file in macros_files_print:
+        if file.exists():
+            file.write_text(file.read_text() + "\n" + print_macros + "\n")
+            break
     else:
-        logger.warning(f"{macros_file_print} not found; please add the following to the macros file for print.tex:\n{print_macros}")
+        logger.warning(f"{macros_files_print[0]} not found; please add the following to the macros file for print.tex:\n{print_macros}")
 
-    macros_file_web = blueprint_root / "macros" / "web.tex"
+    macros_files_web = [blueprint_root / "macros" / "web.tex", blueprint_root / "preamble" / "web.tex"]
     # NB: \Verb is not defined in plasTeX
     web_macros = "\\providecommand{\\Verb}{\\verb}"
-    if macros_file_web.exists():
-        macros_file_web.write_text(macros_file_web.read_text() + "\n" + web_macros + "\n")
+    for file in macros_files_web:
+        if file.exists():
+            file.write_text(file.read_text() + "\n" + web_macros + "\n")
+            break
     else:
-        logger.warning(f"{macros_file_web} not found; please add the following to the macros file for web.tex:\n{web_macros}")
+        logger.warning(f"{macros_files_web[0]} not found; please add the following to the macros file for web.tex:\n{web_macros}")
