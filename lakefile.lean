@@ -19,9 +19,6 @@ lean_exe add_position_info where
 require batteries from git
   "https://github.com/leanprover-community/batteries" @ "v4.25.0"
 
-require MD4Lean from git
-  "https://github.com/acmepjz/md4lean" @ "main"
-
 require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "v4.25.0"
 
