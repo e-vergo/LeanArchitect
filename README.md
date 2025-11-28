@@ -175,7 +175,7 @@ With a project that uses the existing leanblueprint format, there is a Python sc
 
 Currently, this script depends on a recent version of Python with `loguru` and `pydantic` installed (install by `pip3 install loguru pydantic`).
 
-First go to a clean branch **without any uncomitted changes**, to prevent overwriting any work you have done.
+First go to a clean branch **without any uncommitted changes**, to prevent overwriting any work you have done.
 
 You can then convert to LeanArchitect format by adding `LeanArchitect` as a dependency to lakefile, run `lake update LeanArchitect`, ensure `leanblueprint checkdecls` works (i.e. all `\lean` are in Lean), and then run:
 
