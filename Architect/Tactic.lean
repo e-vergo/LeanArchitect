@@ -40,8 +40,7 @@ def getProofDocString (env : Environment) (name : Name) : Array String :=
 
 elab (name := tacticDocComment) docComment:docComment t:tactic : tactic => do
   let some name ← Term.getDeclName? | throwError "could not get declaration name"
-  validateDocComment docComment
-  let doc := (← getDocStringText docComment).trim
+  let doc := (← getDocStringText ⟨docComment⟩).trim
   modifyEnv fun env => addProofDocString env name doc
   -- NOTE: an alternative approach is to remove `t:tactic` and `evalTactic t`.
   -- This would also work for our purpose, but we require a following `t:tactic` and then immediately
@@ -51,8 +50,7 @@ elab (name := tacticDocComment) docComment:docComment t:tactic : tactic => do
 
 /-! We implement the `blueprint_using` and `sorry_using` tactics that declares used constants. -/
 
--- **TODO**: support `sorry_using ["label"]` (which should elaborate to `let _ : RawLabel := "label"` where `RawLabel := String`,
--- and then collect all terms of type `RawLabel` to the blueprint metadata in `Attribute.lean`).
+-- **TODO**: support `sorry_using ["label"]` (which should accumulate to an environment extension similar to `proofDocStringExt`).
 
 /--
 `blueprint_using [a, b]` adds `a` and `b` as dependencies for the blueprint metadata.

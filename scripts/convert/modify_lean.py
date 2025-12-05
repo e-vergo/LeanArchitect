@@ -180,15 +180,11 @@ def write_blueprint_attributes(
             return f"attribute [{node.to_lean_attribute(add_uses=False, add_proof_uses=False, docstring_indent=docstring_indent, docstring_style=docstring_style)}]\n  {node.name}"
         elif convert_informal:
             lean = ""
-            lean += f"@[{node.to_lean_attribute(add_uses=False, add_proof_text=False, add_proof_uses=False, docstring_indent=docstring_indent, docstring_style=docstring_style)}]\n"
+            lean += f"@[{node.to_lean_attribute(docstring_indent=docstring_indent, docstring_style=docstring_style)}]\n"
             if node.proof is None:
-                lean += f"def {node.name} : (sorry : Type) :=\n"
-                lean += f"  sorry_using [{', '.join(_quote(use) for use in node.statement.uses)}]"
+                lean += f"def {node.name} : (sorry : Type) :=\n  sorry"
             else:
-                lean += f"theorem {node.name} : (sorry_using [{', '.join(_quote(use) for use in node.proof.uses)}] : Prop) := by\n"
-                if node.proof.text.strip():
-                    lean += f"  {make_docstring(node.proof.text, indent=2, start_column=len("  "))}\n"
-                lean += f"  sorry_using [{', '.join(_quote(use) for use in node.statement.uses)}]"
+                lean += f"theorem {node.name} : (sorry : Prop) := by\n  sorry"
             return lean
         else:
             logger.warning(

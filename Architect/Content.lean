@@ -1,4 +1,5 @@
 import Architect.Basic
+import Architect.Command
 
 
 open Lean Elab
@@ -8,7 +9,7 @@ namespace Architect
 /-! The blueprint content in a module (see `BlueprintContent`) consists of:
 
 - Blueprint nodes extracted  from `@[blueprint]` tags
-- All module docstrings defined in `/-! ... -/`
+- All module docstrings defined in `blueprint_comment /-- ... -/`
 
 These contents are sorted by declaration range (similar to the sort in doc-gen4).
 -/
@@ -36,7 +37,7 @@ def BlueprintContent.order (l r : BlueprintContent) : Bool :=
 def getMainModuleBlueprintContents : CoreM (Array BlueprintContent) := do
   let env ← getEnv
   let nodes ← (blueprintExt.getEntries env).toArray.mapM fun (_, node) => BlueprintContent.node <$> node.toNodeWithPos
-  let modDocs := (getMainModuleDoc env).toArray.map BlueprintContent.modDoc
+  let modDocs := (getMainModuleBlueprintDoc env).toArray.map BlueprintContent.modDoc
   return (nodes ++ modDocs).qsort BlueprintContent.order
 
 /-- Get blueprint contents of an imported module (this is for debugging). -/
@@ -44,7 +45,7 @@ def getBlueprintContents (module : Name) : CoreM (Array BlueprintContent) := do
   let env ← getEnv
   let some modIdx := env.getModuleIdx? module | return #[]
   let nodes ← (blueprintExt.getModuleEntries env modIdx).mapM fun (_, node) => BlueprintContent.node <$> node.toNodeWithPos
-  let modDocs := (getModuleDoc? env module).getD #[] |>.map BlueprintContent.modDoc
+  let modDocs := (getModuleBlueprintDoc? env module).getD #[] |>.map BlueprintContent.modDoc
   return (nodes ++ modDocs).qsort BlueprintContent.order
 
 end Architect

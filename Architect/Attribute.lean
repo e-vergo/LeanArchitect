@@ -38,9 +38,9 @@ structure Config where
   trace : Bool := false
 deriving Repr
 
-syntax blueprintStatementOption := &"statement" " := " docComment
+syntax blueprintStatementOption := &"statement" " := " plainDocComment
 syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
-syntax blueprintProofOption := &"proof" " := " docComment
+syntax blueprintProofOption := &"proof" " := " plainDocComment
 syntax blueprintUsesOption := &"uses" " := " "[" (ident <|> str),* "]"
 syntax blueprintProofUsesOption := &"proofUses" " := " "[" (ident <|> str),* "]"
 syntax blueprintTitleOption := &"title" " := " str
@@ -90,7 +90,6 @@ def elabBlueprintConfig : Syntax → CoreM Config
     for stx in opts do
       match stx with
       | `(blueprintOption| (statement := $doc)) =>
-        validateDocComment doc
         let statement := (← getDocStringText doc).trim
         config := { config with statement }
       | `(blueprintOption| (hasProof := true)) =>
@@ -98,7 +97,6 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (hasProof := false)) =>
         config := { config with hasProof := some .false }
       | `(blueprintOption| (proof := $doc)) =>
-        validateDocComment doc
         let proof := (← getDocStringText doc).trim
         config := { config with proof }
       | `(blueprintOption| (uses := [$[$ids],*])) =>
