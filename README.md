@@ -183,13 +183,11 @@ You can then convert to LeanArchitect format by adding `LeanArchitect` as a depe
 lake script run blueprintConvert
 ```
 
-Note that this conversion is not idempotent, and for large projects it occasionally ends in some small syntax errors.
+Note that this conversion occasionally ends in some small syntax errors.
 
 Please attend to the warnings in the output of the conversion script above. They might be caused by an incomplete or nonstandard blueprint and may cause further problems in the pipeline.
 
-Informal-only nodes (nodes without `\lean`) are by default not converted to Lean. You may add `--convert_informal` to the command above to convert them.
-
-The conversion will remove the `\uses` information in LaTeX and let LeanArchitect automatically infer dependencies in Lean, unless the code contains `sorry` (in which case `uses :=` and `proofUses :=` will be added). If `--add_uses` is specified then all `\uses` information is retained in Lean.
+The conversion will remove the `\uses` information in LaTeX and let LeanArchitect automatically infer dependencies in Lean, unless the code contains `sorry` (in which case `uses :=` and `proofUses :=` will be added). If `--add_uses` is specified then all `\uses` information is retained in Lean by `uses :=` and `proofUses :=`.
 
 You may use `--blueprint_root <root>` to specify the path to your blueprint, if it is not the default.
 
@@ -228,7 +226,7 @@ lake build :blueprintJson
 
 The output will be in `.lake/build/blueprint`.
 
-## Details
+## Usage details
 
 ### Multiple Lean declarations
 
@@ -252,3 +250,30 @@ should produce a single node with `\lean{b_mul, b_add}`.
 ### Weird highlight in VS Code
 
 If you notice the syntax highlighting makes entire blocks of Lean code a wrong color, it is likely that somewhere in a LaTeX comment there is something like `<a` which is parsed by VS Code as an HTML tag. Simply change it to `< a` and the highlights should then be fixed.
+
+### Extracting entire Lean file to LaTeX
+
+It is possible to convert an entire Lean file to LaTeX, by using `\inputleanmodule` in LaTeX,
+which will convert all nodes in the order they are defined in Lean. For example:
+
+```lean
+-- Example.lean
+@[blueprint (statement := /-- My definition. -/)] def my_def : ...
+blueprint_comment /-- My comment about the definition. -/
+@[blueprint (statement := /-- My theorem. -/)] theorem my_theorem : ...
+```
+
+Then in LaTeX `\inputleanmodule{Example}` will expand to
+
+```
+\begin{definition} \lean{my_def} My definition. \end{definition}
+
+My comment about the definition.
+
+\begin{theorem} \lean{my_def} My theorem. \end{theorem}
+\begin{proof} ... \end{proof}
+```
+
+### Converting unformalized LaTeX nodes
+
+In the `blueprintConvert` script, informal-only nodes (nodes without `\lean`) are by default not converted to Lean. You may add `--convert_informal` to `blueprintConvert` to convert them, which will output Lean declarations like `@[blueprint] def my_def : (sorry : Type) := sorry` and `@[blueprint] theorem my_theorem : (sorry : Prop) := sorry` in the Lean project.
