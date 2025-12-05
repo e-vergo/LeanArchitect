@@ -11,37 +11,27 @@ namespace ProofDocString
 
 /-! Here we implement docstrings but for proofs. -/
 
--- NB: I copied some logic from `aliasExtension`
-
-abbrev State := SMap Name (Array String)
-abbrev Entry := Name × String
-
-private def addEntryFn (s : State) (e : Entry) : State :=
-  match s.find? e.1 with
-  | none => s.insert e.1 #[e.2]
-  | some es => s.insert e.1 (es.push e.2)
-
-initialize proofDocStringExt : SimplePersistentEnvExtension Entry State ←
-  registerSimplePersistentEnvExtension {
-    addEntryFn := addEntryFn
-    addImportedFn := fun es => mkStateFromImportedEntries addEntryFn {} es |>.switch
-    asyncMode := .async .asyncEnv
-  }
+/-- The environment extension that stores the proof docstrings.
+Note that this is not persistent, so the data is not available to other modules. -/
+initialize proofDocStringExt : EnvExtension (NameMap (Array String)) ←
+  registerEnvExtension (pure ∅) (asyncMode := .async .asyncEnv)
 
 end ProofDocString
 
 open ProofDocString
 
 def addProofDocString (env : Environment) (name : Name) (doc : String) : Environment :=
-  proofDocStringExt.addEntry (asyncDecl := name) env (name, doc)
+  proofDocStringExt.modifyState (asyncDecl := name) env fun s =>
+    match s.find? name with
+    | none => s.insert name #[doc]
+    | some es => s.insert name (es.push doc)
 
 def getProofDocString (env : Environment) (name : Name) : Array String :=
-  proofDocStringExt.getState (asyncDecl := name) env |>.findD name #[]
+  proofDocStringExt.getState (asyncDecl := name) env |>.find? name |>.getD #[]
 
-elab (name := tacticDocComment) docComment:docComment t:tactic : tactic => do
+elab (name := tacticDocComment) docComment:plainDocComment t:tactic : tactic => do
   let some name ← Term.getDeclName? | throwError "could not get declaration name"
-  validateDocComment docComment
-  let doc := (← getDocStringText docComment).trim
+  let doc := (← getDocStringText ⟨docComment⟩).trim
   modifyEnv fun env => addProofDocString env name doc
   -- NOTE: an alternative approach is to remove `t:tactic` and `evalTactic t`.
   -- This would also work for our purpose, but we require a following `t:tactic` and then immediately
@@ -51,8 +41,7 @@ elab (name := tacticDocComment) docComment:docComment t:tactic : tactic => do
 
 /-! We implement the `blueprint_using` and `sorry_using` tactics that declares used constants. -/
 
--- **TODO**: support `sorry_using ["label"]` (which should elaborate to `let _ : RawLabel := "label"` where `RawLabel := String`,
--- and then collect all terms of type `RawLabel` to the blueprint metadata in `Attribute.lean`).
+-- **TODO**: support `sorry_using ["label"]` (which should accumulate to an environment extension similar to `proofDocStringExt`).
 
 /--
 `blueprint_using [a, b]` adds `a` and `b` as dependencies for the blueprint metadata.

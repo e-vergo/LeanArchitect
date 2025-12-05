@@ -21,6 +21,9 @@ def read_latex_file(file: Path) -> str:
         text = file.read_text()
         def replace_input(match):
             input_path = match.group(1).strip()
+            # Do not convert automatically generated blueprint from :blueprint
+            if ".lake/build/blueprint" in input_path:
+                return ""
             if not input_path.endswith(".tex"):
                 input_path += ".tex"
             input_file : Path = root_dir / input_path

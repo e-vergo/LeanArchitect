@@ -252,7 +252,3 @@ should produce a single node with `\lean{b_mul, b_add}`.
 ### Weird highlight in VS Code
 
 If you notice the syntax highlighting makes entire blocks of Lean code a wrong color, it is likely that somewhere in a LaTeX comment there is something like `<a` which is parsed by VS Code as an HTML tag. Simply change it to `< a` and the highlights should then be fixed.
-
-## TODO
-
-See `TODO`s in code.
