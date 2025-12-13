@@ -18,12 +18,20 @@ structure Config where
   proof : Option String := none
   /-- The set of nodes that this node depends on. Infers from the constant if not present. -/
   uses : Array Name := #[]
-  /-- Additional raw labels of nodes that this node depends on. -/
-  usesRaw : Array String := #[]
+  /-- The set of nodes to exclude from `uses`. -/
+  excludes : Array Name := #[]
+  /-- Additional LaTeX labels of nodes that this node depends on. -/
+  usesLabels : Array String := #[]
+  /-- The set of labels to exclude from `usesLabels`. -/
+  excludesLabels : Array String := #[]
   /-- The set of nodes that the proof of this node depends on. Infers from the constant's value if not present. -/
   proofUses : Array Name := #[]
-  /-- Additional raw labels of nodes that the proof of this node depends on. -/
-  proofUsesRaw : Array String := #[]
+  /-- The set of nodes to exclude from `proofUses`. -/
+  proofExcludes : Array Name := #[]
+  /-- Additional LaTeX labels of nodes that the proof of this node depends on. -/
+  proofUsesLabels : Array String := #[]
+  /-- The set of labels to exclude from `proofUsesLabels`. -/
+  proofExcludesLabels : Array String := #[]
   /-- The surrounding environment is not ready to be formalized, typically because it requires more blueprint work. -/
   notReady : Bool := false
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
@@ -38,11 +46,33 @@ structure Config where
   trace : Bool := false
 deriving Repr
 
+syntax blueprintSingleUses := "-"? (ident <|> str)
+syntax blueprintUses := "[" blueprintSingleUses,* "]"
+
+/-- Returns array of (used names, excluded names, used labels, excluded labels). -/
+def elabBlueprintUses : TSyntax ``blueprintUses →
+    CoreM (Array Name × Array Name × Array String × Array String)
+  | `(blueprintUses| [$[$usesStx:blueprintSingleUses],*]) => do
+    let uses ← usesStx.filterMapM fun
+      | `(blueprintSingleUses| $id:ident) => some <$> tryResolveConst id
+      | _ => pure none
+    let excludes ← usesStx.filterMapM fun
+      | `(blueprintSingleUses| -$id:ident) => some <$> tryResolveConst id
+      | _ => pure none
+    let usesLabels := usesStx.filterMap fun
+      | `(blueprintSingleUses| $str:str) => some str.getString
+      | _ => none
+    let excludesLabels := usesStx.filterMap fun
+      | `(blueprintSingleUses| -$str:str) => some str.getString
+      | _ => none
+    return (uses, excludes, usesLabels, excludesLabels)
+  | _ => throwUnsupportedSyntax
+
 syntax blueprintStatementOption := &"statement" " := " plainDocComment
 syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
 syntax blueprintProofOption := &"proof" " := " plainDocComment
-syntax blueprintUsesOption := &"uses" " := " "[" (ident <|> str),* "]"
-syntax blueprintProofUsesOption := &"proofUses" " := " "[" (ident <|> str),* "]"
+syntax blueprintUsesOption := &"uses" " := " blueprintUses
+syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " str
 syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
@@ -99,22 +129,16 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (proof := $doc)) =>
         let proof := (← getDocStringText doc).trim
         config := { config with proof }
-      | `(blueprintOption| (uses := [$[$ids],*])) =>
-        let uses ← ids.filterMapM fun
-          | `(ident| $id:ident) => some <$> tryResolveConst id
-          | _ => pure none
-        let usesRaw := ids.filterMap fun
-          | `(str| $str:str) => some str.getString
-          | _ => none
-        config := { config with uses := config.uses ++ uses, usesRaw := config.usesRaw ++ usesRaw }
-      | `(blueprintOption| (proofUses := [$[$ids],*])) =>
-        let proofUses ← ids.filterMapM fun
-          | `(ident| $id:ident) => some <$> tryResolveConst id
-          | _ => pure none
-        let proofUsesRaw := ids.filterMap fun
-          | `(str| $str:str) => some str.getString
-          | _ => none
-        config := { config with proofUses := config.proofUses ++ proofUses, proofUsesRaw := config.proofUsesRaw ++ proofUsesRaw }
+      | `(blueprintOption| (uses := $uses)) =>
+        let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses
+        config := { config with
+          uses := config.uses ++ uses, excludes := config.excludes ++ excludes,
+          usesLabels := config.usesLabels ++ usesLabels, excludesLabels := config.excludesLabels ++ excludesLabels }
+      | `(blueprintOption| (proofUses := $uses)) =>
+        let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses
+        config := { config with
+          proofUses := config.proofUses ++ uses, proofExcludes := config.proofExcludes ++ excludes,
+          proofUsesLabels := config.proofUsesLabels ++ usesLabels, proofExcludesLabels := config.proofExcludesLabels ++ excludesLabels }
       | `(blueprintOption| (title := $str)) =>
         config := { config with title := str.getString }
       | `(blueprintOption| (notReady := true)) =>
@@ -139,31 +163,35 @@ def mkStatementPart (_name : Name) (latexLabel : String) (cfg : Config) (hasProo
     CoreM NodePart := do
   let env ← getEnv
   let leanOk := !used.contains ``sorryAx
-  -- Used constants = blueprint constants specified by `uses :=` + used in the statement
-  let uses := cfg.uses.foldl (·.insert ·) used
-  let usesLabels : Std.HashSet String := .ofArray <|
+  -- Used constants = blueprint constants specified by `uses :=` + used in the statement - excludes
+  let uses := cfg.uses.foldl (·.insert ·) used |>.filter (· ∉ cfg.excludes)
+  let mut usesLabels : Std.HashSet String := .ofArray <|
     uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
+  usesLabels := usesLabels.erase latexLabel
+  usesLabels := cfg.usesLabels.foldl (·.insert ·) usesLabels |>.filter (· ∉ cfg.excludesLabels)
   let statement := cfg.statement.getD ""
   return {
     leanOk
     text := statement
-    uses := (usesLabels.erase latexLabel).toArray ++ cfg.usesRaw
+    uses := usesLabels.toArray
     latexEnv := cfg.latexEnv.getD (if hasProof then "theorem" else "definition")
   }
 
 def mkProofPart (name : Name) (latexLabel : String) (cfg : Config) (used : NameSet) : CoreM NodePart := do
   let env ← getEnv
   let leanOk := !used.contains ``sorryAx
-  -- Used constants = blueprint constants specified by `proofUses :=` + used in the statement
-  let uses := cfg.proofUses.foldl (·.insert ·) used
-  let usesLabels : Std.HashSet String := .ofArray <|
+  -- Used constants = blueprint constants specified by `proofUses :=` + used in the statement - excludes
+  let uses := cfg.proofUses.foldl (·.insert ·) used |>.filter (· ∉ cfg.proofExcludes)
+  let mut usesLabels : Std.HashSet String := .ofArray <|
     uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
+  usesLabels := usesLabels.erase latexLabel
+  usesLabels := cfg.proofUsesLabels.foldl (·.insert ·) usesLabels |>.filter (· ∉ cfg.proofExcludesLabels)
   -- Use proof docstring for proof text
   let proof := cfg.proof.getD ("\n\n".intercalate (getProofDocString env name).toList)
   return {
     leanOk
     text := proof
-    uses := (usesLabels.erase latexLabel).toArray ++ cfg.proofUsesRaw
+    uses := usesLabels.toArray
     latexEnv := "proof"
   }
 
@@ -171,8 +199,8 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
   trace[blueprint.debug] "mkNode {.ofConstName name} {repr cfg}"
   let (statementUsed, proofUsed) ← collectUsed name
   trace[blueprint.debug] "Collected used constants:
-    {.ofArray (statementUsed.toArray.map .ofConstName)}
-    {.ofArray (proofUsed.toArray.map .ofConstName)}"
+    Statement: {.ofArray (statementUsed.toArray.map .ofConstName)}
+    Proof: {.ofArray (proofUsed.toArray.map .ofConstName)}"
   let latexLabel := cfg.latexLabel.getD name.toString
   if ← hasProof name cfg then
     let statement ← mkStatementPart name latexLabel cfg .true statementUsed

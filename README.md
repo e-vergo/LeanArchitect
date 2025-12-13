@@ -274,6 +274,18 @@ My comment about the definition.
 \begin{proof} ... \end{proof}
 ```
 
+It is up to your design choice to use `\inputleanmodule` to have a blueprint that strictly follows the order in a Lean file,
+or use multiple `\inputleannode` to include declarations individually for more flexibility.
+
+### Suppressing a dependency relation
+
+If in Lean, `@[blueprint] theorem B` uses `@[blueprint] theorem A`, and you wish this not to appear in the dependency graph, then you may write:
+
+```lean
+@[blueprint] theorem A := ...
+@[blueprint (proofUses := [-A])] theorem B := ...
+```
+
 ### Converting unformalized LaTeX nodes
 
 In the `blueprintConvert` script, informal-only nodes (nodes without `\lean`) are by default not converted to Lean. You may add `--convert_informal` to `blueprintConvert` to convert them, which will output Lean declarations like `@[blueprint] def my_def : (sorry : Type) := sorry` and `@[blueprint] theorem my_theorem : (sorry : Prop) := sorry` in the Lean project.
