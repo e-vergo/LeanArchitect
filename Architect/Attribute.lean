@@ -120,14 +120,14 @@ def elabBlueprintConfig : Syntax → CoreM Config
     for stx in opts do
       match stx with
       | `(blueprintOption| (statement := $doc)) =>
-        let statement := (← getDocStringText doc).trim
+        let statement := (← getDocStringText doc).trimAscii.copy
         config := { config with statement }
       | `(blueprintOption| (hasProof := true)) =>
         config := { config with hasProof := some .true }
       | `(blueprintOption| (hasProof := false)) =>
         config := { config with hasProof := some .false }
       | `(blueprintOption| (proof := $doc)) =>
-        let proof := (← getDocStringText doc).trim
+        let proof := (← getDocStringText doc).trimAscii.copy
         config := { config with proof }
       | `(blueprintOption| (uses := $uses)) =>
         let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses

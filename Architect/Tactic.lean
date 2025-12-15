@@ -31,7 +31,7 @@ def getProofDocString (env : Environment) (name : Name) : Array String :=
 
 elab (name := tacticDocComment) docComment:plainDocComment t:tactic : tactic => do
   let some name ← Term.getDeclName? | throwError "could not get declaration name"
-  let doc := (← getDocStringText ⟨docComment⟩).trim
+  let doc := (← getDocStringText ⟨docComment⟩).trimAscii.copy
   modifyEnv fun env => addProofDocString env name doc
   -- NOTE: an alternative approach is to remove `t:tactic` and `evalTactic t`.
   -- This would also work for our purpose, but we require a following `t:tactic` and then immediately
