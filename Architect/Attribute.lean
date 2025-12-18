@@ -68,9 +68,9 @@ def elabBlueprintUses : TSyntax ``blueprintUses →
     return (uses, excludes, usesLabels, excludesLabels)
   | _ => throwUnsupportedSyntax
 
-syntax blueprintStatementOption := &"statement" " := " plainDocComment
+syntax blueprintStatementOption := &"statement" " := " docComment
 syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
-syntax blueprintProofOption := &"proof" " := " plainDocComment
+syntax blueprintProofOption := &"proof" " := " docComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " str
@@ -120,14 +120,14 @@ def elabBlueprintConfig : Syntax → CoreM Config
     for stx in opts do
       match stx with
       | `(blueprintOption| (statement := $doc)) =>
-        let statement := (← getDocStringText doc).trimAscii.copy
+        let statement := (← getDocStringText doc).trim
         config := { config with statement }
       | `(blueprintOption| (hasProof := true)) =>
         config := { config with hasProof := some .true }
       | `(blueprintOption| (hasProof := false)) =>
         config := { config with hasProof := some .false }
       | `(blueprintOption| (proof := $doc)) =>
-        let proof := (← getDocStringText doc).trimAscii.copy
+        let proof := (← getDocStringText doc).trim
         config := { config with proof }
       | `(blueprintOption| (uses := $uses)) =>
         let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses

@@ -29,9 +29,9 @@ def addProofDocString (env : Environment) (name : Name) (doc : String) : Environ
 def getProofDocString (env : Environment) (name : Name) : Array String :=
   proofDocStringExt.getState (asyncDecl := name) env |>.find? name |>.getD #[]
 
-elab (name := tacticDocComment) docComment:plainDocComment t:tactic : tactic => do
+elab (name := tacticDocComment) docComment:docComment t:tactic : tactic => do
   let some name ← Term.getDeclName? | throwError "could not get declaration name"
-  let doc := (← getDocStringText ⟨docComment⟩).trimAscii.copy
+  let doc := (← getDocStringText ⟨docComment⟩).trim
   modifyEnv fun env => addProofDocString env name doc
   -- NOTE: an alternative approach is to remove `t:tactic` and `evalTactic t`.
   -- This would also work for our purpose, but we require a following `t:tactic` and then immediately

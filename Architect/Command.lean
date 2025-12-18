@@ -35,11 +35,11 @@ def getModuleBlueprintDoc? (env : Environment) (moduleName : Name) : Option (Arr
 `blueprint_comment /-- ... -/` adds a piece of text to the blueprint of the current module,
 which is available as `\inputleanmodule{Module}` in LaTeX.
 -/
-elab (name := blueprintComment) "blueprint_comment " stx:plainDocComment : command => do
+elab (name := blueprintComment) "blueprint_comment " stx:docComment : command => do
   let some range ← Elab.getDeclarationRange? stx
     | return  -- must be from partial syntax, ignore
 
-  let doc := (← getDocStringText ⟨stx⟩).trimAscii.copy
+  let doc := (← getDocStringText ⟨stx⟩).trim
   modifyEnv fun env => addMainModuleBlueprintDoc env ⟨doc, range⟩
 
 end Architect

@@ -61,7 +61,7 @@ def NodePart.toLatex (part : NodePart) (allParts : Array NodePart := #[part])
   if allParts.all (·.leanOk) then
     out := out ++ "\\leanok\n"
 
-  out := out ++ (preprocessLatex part.text).trimAscii ++ "\n"
+  out := out ++ (preprocessLatex part.text).trim ++ "\n"
 
   out := out ++ "\\end{" ++ part.latexEnv ++ "}\n"
   return out
