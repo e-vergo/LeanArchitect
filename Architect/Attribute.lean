@@ -73,7 +73,7 @@ syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
 syntax blueprintProofOption := &"proof" " := " plainDocComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
-syntax blueprintTitleOption := &"title" " := " str
+syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
 syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
@@ -139,8 +139,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with
           proofUses := config.proofUses ++ uses, proofExcludes := config.proofExcludes ++ excludes,
           proofUsesLabels := config.proofUsesLabels ++ usesLabels, proofExcludesLabels := config.proofExcludesLabels ++ excludesLabels }
-      | `(blueprintOption| (title := $str)) =>
+      | `(blueprintOption| (title := $str:str)) =>
         config := { config with title := str.getString }
+      | `(blueprintOption| (title := $doc:docComment)) =>
+        config := { config with title := (← getDocStringText doc).trimAscii.copy }
       | `(blueprintOption| (notReady := true)) =>
         config := { config with notReady := .true }
       | `(blueprintOption| (notReady := false)) =>
