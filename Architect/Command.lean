@@ -39,7 +39,7 @@ elab (name := blueprintComment) "blueprint_comment " stx:plainDocComment : comma
   let some range ← Elab.getDeclarationRange? stx
     | return  -- must be from partial syntax, ignore
 
-  let doc := (← getDocStringText ⟨stx⟩).trim
+  let doc ← getDocStringText ⟨stx⟩
   modifyEnv fun env => addMainModuleBlueprintDoc env ⟨doc, range⟩
 
 end Architect
