@@ -6,7 +6,7 @@ from typing import Generator, Optional, Literal
 
 from loguru import logger
 
-from common import Node, NodeWithPos, Position, DeclarationRange, DeclarationLocation, make_docstring, _quote
+from common import Node, NodeWithPos, Position, DeclarationRange, DeclarationLocation, FormattingConfig
 
 
 def split_declaration(source: str, pos: Position, end_pos: Position):
@@ -81,8 +81,7 @@ def insert_attributes(decl: str, new_attr: str) -> str:
 
 
 def modify_source(
-    node: Node, file: Path, location: DeclarationLocation, add_uses: bool,
-    docstring_indent: int, docstring_style: Literal["hanging", "compact"],
+    node: Node, file: Path, location: DeclarationLocation, formatting_config: FormattingConfig, add_uses: bool,
     prepend: Optional[list[str]] = None
 ):
     """Modify a Lean source file to add @[blueprint] attribute and docstring to the node."""
@@ -92,8 +91,7 @@ def modify_source(
     add_uses = add_uses or (node.proof is None and "sorry" in decl)
     add_proof_uses = add_uses or (node.proof is not None and "sorry" in decl)
     attr = node.to_lean_attribute(
-        add_uses=add_uses, add_proof_uses=add_proof_uses,
-        docstring_indent=docstring_indent, docstring_style=docstring_style
+        formatting_config, add_uses=add_uses, add_proof_uses=add_proof_uses
     )
     decl = insert_attributes(decl, attr)
 
@@ -154,7 +152,7 @@ def topological_sort(nodes: list[NodeWithPos]) -> list[NodeWithPos]:
 def write_blueprint_attributes(
     nodes: list[NodeWithPos], modules: list[str], root_file: str,
     convert_informal: bool, convert_upstream: bool,
-    add_uses: bool, docstring_indent: int, docstring_style: Literal["hanging", "compact"]
+    formatting_config: FormattingConfig, add_uses: bool
 ) -> list[NodeWithPos]:
 
     def is_upstream(node: NodeWithPos) -> bool:
@@ -177,10 +175,10 @@ def write_blueprint_attributes(
     # If no such normal node exists, the upstream node is added to the root file.
     def upstream_or_informal_to_lean(node: NodeWithPos) -> str:
         if node.location is not None:
-            return f"attribute [{node.to_lean_attribute(add_uses=False, add_proof_uses=False, docstring_indent=docstring_indent, docstring_style=docstring_style)}]\n  {node.name}"
+            return f"attribute [{node.to_lean_attribute(formatting_config, add_uses=False, add_proof_uses=False)}]\n  {node.name}"
         elif convert_informal:
             lean = ""
-            lean += f"@[{node.to_lean_attribute(docstring_indent=docstring_indent, docstring_style=docstring_style)}]\n"
+            lean += f"@[{node.to_lean_attribute(formatting_config)}]\n"
             if node.proof is None:
                 lean += f"def {node.name} : (sorry : Type) :=\n  sorry"
             else:
@@ -189,7 +187,7 @@ def write_blueprint_attributes(
         else:
             logger.warning(
                 f"Could not find the location of {node.name}. Please add the following manually:\n"
-                f"attribute [{node.to_lean_attribute(add_uses=False, add_proof_uses=False, docstring_indent=docstring_indent, docstring_style=docstring_style)}]\n  {node.name}"
+                f"attribute [{node.to_lean_attribute(formatting_config, add_uses=False, add_proof_uses=False)}]\n  {node.name}"
             )
             return ""
 
@@ -231,8 +229,7 @@ def write_blueprint_attributes(
         assert node.has_lean and node.file is not None and node.location is not None
         prepend_nodes = list(all_prepends(node))
         modify_source(
-            node, Path(node.file), node.location, add_uses=add_uses,
-            docstring_indent=docstring_indent, docstring_style=docstring_style,
+            node, Path(node.file), node.location, formatting_config, add_uses=add_uses,
             prepend=list(upstream_or_informal_to_lean(n) for n in prepend_nodes)
         )
         modified_files.add(node.file)
