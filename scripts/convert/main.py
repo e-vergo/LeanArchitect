@@ -7,7 +7,7 @@ import sys
 
 from loguru import logger
 
-from common import Node, NodeWithPos
+from common import Node, NodeWithPos, FormattingConfig
 from parse_latex import read_latex_file, parse_nodes, get_bibliography_files
 from modify_latex import write_latex_source
 from modify_lean import write_blueprint_attributes
@@ -68,6 +68,7 @@ def main():
         default=None,
         help="LeanOptions in JSON to pass to running the imports during add_position_info."
     )
+    # Formatting options
     parser.add_argument(
         "--docstring_indent",
         type=int,
@@ -79,6 +80,12 @@ def main():
         choices=["hanging", "compact"],
         default="compact",
         help="Whether to insert a line break after `/--` (hanging) or not (compact)."
+    )
+    parser.add_argument(
+        "--max_columns",
+        type=int,
+        default=100,
+        help="The maximum number of columns in Lean before a line break is inserted."
     )
 
     args = parser.parse_args()
@@ -142,10 +149,15 @@ def main():
 
     # Write the blueprint attributes to Lean files
     logger.info("Writing @[blueprint] attributes to Lean files")
+    formatting_config = FormattingConfig(
+        docstring_indent=args.docstring_indent,
+        docstring_style=args.docstring_style,
+        max_columns=args.max_columns
+    )
     modified_nodes = write_blueprint_attributes(
         nodes_with_pos, args.modules, args.root_file,
         args.convert_informal, True,  # Always convert upstream nodes
-        args.add_uses, args.docstring_indent, args.docstring_style
+        formatting_config, args.add_uses
     )
 
     # Write to LaTeX source
