@@ -26,8 +26,9 @@ def addProofDocString (env : Environment) (name : Name) (doc : String) : Environ
     | none => s.insert name #[doc]
     | some es => s.insert name (es.push doc)
 
-def getProofDocString (env : Environment) (name : Name) : Array String :=
-  proofDocStringExt.getState (asyncDecl := name) env |>.find? name |>.getD #[]
+def getProofDocString (env : Environment) (name : Name) : String :=
+  "\n\n".intercalate <|
+    proofDocStringExt.getState (asyncDecl := name) env |>.find? name |>.getD #[] |>.toList
 
 elab (name := tacticDocComment) docComment:docComment t:tactic : tactic => do
   let some name ← Term.getDeclName? | throwError "could not get declaration name"

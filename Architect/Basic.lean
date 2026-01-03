@@ -11,12 +11,16 @@ initialize registerTraceClass `blueprint.debug
 
 /-- The statement or proof of a node. -/
 structure NodePart where
-  /-- Whether the part is formalized without `sorry` in Lean. -/
-  leanOk : Bool
   /-- The natural language description of this part. -/
   text : String
-  /-- The names of nodes that this node depends on. -/
-  uses : Array String
+  /-- The specified set of nodes that this node depends on, in addition to inferred ones. -/
+  uses : Array Name := #[]
+  /-- The set of nodes to exclude from `uses`. -/
+  excludes : Array Name := #[]
+  /-- Additional LaTeX labels of nodes that this node depends on. -/
+  usesLabels : Array String := #[]
+  /-- The set of labels to exclude from `usesLabels`. -/
+  excludesLabels : Array String := #[]
   /-- The LaTeX environment to use for this part. -/
   latexEnv : String
 deriving Inhabited, Repr, FromJson, ToJson, ToExpr
@@ -96,7 +100,7 @@ def getLeanNamesOfLatexLabel (env : Environment) (latexLabel : String) : Array N
 section ResolveConst
 
 register_option blueprint.ignoreUnknownConstants : Bool := {
-  defValue := .false,
+  defValue := false,
   descr := "Whether to ignore unknown constants in the `uses` and `proofUses` options of the `blueprint` attribute."
 }
 

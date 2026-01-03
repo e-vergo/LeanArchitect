@@ -25,9 +25,13 @@ class BaseSchema(BaseModel):
 # These classes are ported from Architect/Basic.lean
 
 class NodePart(BaseSchema):
-    lean_ok: bool
     text: str
+    # NB: `uses`, `excludes`, `excludes_labels` are NOT used during conversion script,
+    # and they should remain as empty sets.
     uses: set[str]
+    excludes: set[str]
+    uses_labels: set[str]
+    excludes_labels: set[str]
     latex_env: str
 
 
@@ -47,12 +51,8 @@ class Node(BaseSchema):
     title: Optional[str]
 
     @property
-    def uses(self) -> set[str]:
-        return self.statement.uses | (self.proof.uses if self.proof is not None else set())
-
-    @property
-    def lean_ok(self) -> bool:
-        return self.statement.lean_ok and (self.proof is None or self.proof.lean_ok)
+    def uses_labels(self) -> set[str]:
+        return self.statement.uses_labels | (self.proof.uses_labels if self.proof is not None else set())
 
     def to_lean_attribute(
         self,
@@ -68,13 +68,13 @@ class Node(BaseSchema):
             options.append(f"(title := {_quote(self.title)})")
         if add_statement_text and self.statement.text.strip():
             options.append(f"(statement := {make_docstring(self.statement.text, config, start_column=len("  (statement := "))})")
-        if add_uses and self.statement.uses:
-            options.append(f"(uses := [{_wrap_list([_quote(use) for use in self.statement.uses], indent=4, start_column=len('  (uses := ['), max_columns=config.max_columns)}])")
+        if add_uses and self.statement.uses_labels:
+            options.append(f"(uses := [{_wrap_list([_quote(use) for use in self.statement.uses_labels], indent=4, start_column=len('  (uses := ['), max_columns=config.max_columns)}])")
         if self.proof is not None:
             if add_proof_text and self.proof.text.strip():
                 options.append(f"(proof := {make_docstring(self.proof.text, config, start_column=len("  (proof := "))})")
-            if add_proof_uses and self.proof.uses:
-                options.append(f"(proofUses := [{_wrap_list([_quote(use) for use in self.proof.uses], indent=4, start_column=len('  (proofUses := ['), max_columns=config.max_columns)}])")
+            if add_proof_uses and self.proof.uses_labels:
+                options.append(f"(proofUses := [{_wrap_list([_quote(use) for use in self.proof.uses_labels], indent=4, start_column=len('  (proofUses := ['), max_columns=config.max_columns)}])")
         if self.not_ready:
             options.append("(notReady := true)")
         if self.discussion:
