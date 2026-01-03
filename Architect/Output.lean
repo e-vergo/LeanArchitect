@@ -61,10 +61,20 @@ def NodePart.toLatex (part : NodePart) (allParts : Array NodePart := #[part])
   if allParts.all (·.leanOk) then
     out := out ++ "\\leanok\n"
 
-  out := out ++ (preprocessLatex part.text).trimAscii ++ "\n"
+  -- If not specified, the main text defaults to the first non-empty text in the parts
+  let text := if !part.text.isEmpty then part.text else
+    allParts.findSome? (fun p => if !p.text.isEmpty then p.text else none) |>.getD ""
+  let textLatex := (preprocessLatex text).trimAscii
+  unless textLatex.isEmpty do
+    out := out ++ textLatex ++ "\n"
 
   out := out ++ "\\end{" ++ part.latexEnv ++ "}\n"
   return out
+
+private def isMathlibOk (name : Name) : m Bool := do
+  let some modIdx := (← getEnv).getModuleIdxFor? name | return false
+  let module := (← getEnv).allImportedModuleNames[modIdx]!
+  return [`Init, `Lean, `Std, `Batteries, `Mathlib].any fun pre => pre.isPrefixOf module
 
 def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
   -- In the output, we merge the Lean nodes corresponding to the same LaTeX label.
@@ -76,13 +86,12 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
   addLatex := addLatex ++ "\\label{" ++ node.latexLabel ++ "}\n"
 
   addLatex := addLatex ++ "\\lean{" ++ ",".intercalate (allLeanNames.map toString).toList ++ "}\n"
-  if node.notReady then
+  if allNodes.any (·.notReady) then
     addLatex := addLatex ++ "\\notready\n"
-  if let some d := node.discussion then
+  if let some d := allNodes.findSome? (·.discussion) then
     addLatex := addLatex ++ "\\discussion{" ++ toString d ++ "}\n"
-  if let some location := node.location then
-    if [`Init, `Lean, `Std, `Batteries, `Mathlib].any fun pre => pre.isPrefixOf location.module then
-      addLatex := addLatex ++ "\\mathlibok\n"
+  if ← allNodes.allM (isMathlibOk ·.name) then
+    addLatex := addLatex ++ "\\mathlibok\n"
 
   -- position string as annotation
   let posStr := match node.file, node.location with
@@ -90,7 +99,7 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     | _, _ => ""
   addLatex := addLatex ++ s!"% at {posStr}\n"
 
-  let statementLatex ← node.statement.toLatex (allNodes.map (·.statement)) node.title addLatex
+  let statementLatex ← node.statement.toLatex (allNodes.map (·.statement)) (allNodes.findSome? (·.title)) addLatex
   match node.proof with
   | none => return statementLatex
   | some proof =>
@@ -141,13 +150,31 @@ def latexPreamble : m Latex := do
 
 %%% Start of main content %%%"
 
+private def dedupContentsByLatexLabel (contents : Array BlueprintContent) : Array BlueprintContent := Id.run do
+  let mut seen : Std.HashSet String := ∅
+  let mut result : Array BlueprintContent := #[]
+  for content in contents do
+    match content with
+    | .node n =>
+      if seen.contains n.latexLabel then
+        continue
+      seen := seen.insert n.latexLabel
+      result := result.push content
+    | .modDoc _ =>
+      result := result.push content
+  return result
+
 /-- Convert a module to a header file and artifacts. The header file requires the path to the artifacts directory. -/
 private def moduleToLatexOutputAux (module : Name) (contents : Array BlueprintContent) : m LatexOutput := do
-  let artifacts : Array LatexArtifact ← contents.filterMapM fun
+  -- First deduplicate contents by LaTeX label
+  let contents' := dedupContentsByLatexLabel contents
+  -- Artifact files
+  let artifacts : Array LatexArtifact := ← contents'.filterMapM fun
     | .node n => n.toLatexArtifact
     | _ => pure none
+  -- Header file
   let preamble ← latexPreamble
-  let headerModuleLatex ← contents.mapM BlueprintContent.toLatex
+  let headerModuleLatex ← contents'.mapM BlueprintContent.toLatex
   let header (artifactsDir : System.FilePath) : Latex :=
     preamble ++ "\n\n" ++
       "\n\n".intercalate (artifacts.map fun ⟨id, _⟩ => "\\newleannode{" ++ id ++ "}{" ++ Latex.input (artifactsDir / id) ++ "}").toList ++ "\n\n" ++
