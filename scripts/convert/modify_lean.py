@@ -139,7 +139,7 @@ def topological_sort(nodes: list[NodeWithPos]) -> list[NodeWithPos]:
 
         node = name_to_node[name]
         for other in nodes:
-            if other.latex_label in node.uses:
+            if other.latex_label in node.uses_labels:
                 visit(other.name)
         result.append(node)
 
@@ -199,17 +199,16 @@ def write_blueprint_attributes(
     extra_nodes: list[NodeWithPos] = []
 
     # Prepend every upstream or informal node to the first node that uses it
-    # Every upstream/informal node should occur exactly once in prepends or extra_nodes
+    # Every upstream/informal node should occur exactly once in either prepends or extra_nodes
     for node in nodes_topological_order:
         if (convert_upstream and is_upstream(node)) or (convert_informal and is_informal(node)):
             for other in nodes_topological_order:
-                # Prepend to node that uses the upstream/informal node and is formalized without `sorry`
-                # The reason for the latter is that, if the upstream node is inserted where it is not
-                # used, the module containing the upstream node might not be imported, causing "unknown constant" errors
-                if node.latex_label in other.uses and other.lean_ok:
+                # Prepend to node that uses the upstream/informal node
+                if node.latex_label in other.uses_labels:
                     prepends[other.name].append(node)
                     break
             else:
+                # Add to root file as fallback case
                 extra_nodes.append(node)
 
     # All nodes that should be prepended to the given node.
