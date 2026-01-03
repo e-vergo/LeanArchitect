@@ -98,7 +98,7 @@ You may optionally add:
 - `proof := /-- ... -/`: The proof of the node in LaTeX (default: the docstrings in proof tactics).
 - `uses := [a, "b"]`: The dependencies of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `proofUses := [a, "b"]`: The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
-- `title := "Title"`: The title of the node in LaTeX.
+- `title := /-- Title -/`: The title of the node in LaTeX.
 - `notReady := true`: Whether the node is not ready.
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
