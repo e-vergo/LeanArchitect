@@ -1,4 +1,6 @@
+import Architect.CollectUsed
 import Architect.Content
+import Architect.Tactic
 
 
 open Lean
@@ -36,14 +38,46 @@ def Latex.input (file : System.FilePath) : Latex :=
   -- LaTeX interprets these as control sequences, so we replace backslashes with forward slashes.
   "\\input{" ++ "/".intercalate file.components ++ "}"
 
-variable {m} [Monad m] [MonadEnv m]
+variable {m} [Monad m] [MonadEnv m] [MonadError m]
 
 def preprocessLatex (s : String) : String :=
   s
 
+structure InferredUses where
+  uses : Array String
+  leanOk : Bool
+
+def InferredUses.empty : InferredUses := { uses := #[], leanOk := true }
+
+def InferredUses.merge (inferredUsess : Array InferredUses) : InferredUses :=
+  { uses := inferredUsess.flatMap (·.uses), leanOk := inferredUsess.all (·.leanOk) }
+
+def NodePart.inferUses (part : NodePart) (latexLabel : String) (used : NameSet) : m InferredUses := do
+  let env ← getEnv
+  let uses := part.uses.foldl (·.insert ·) used |>.filter (· ∉ part.excludes)
+  let mut usesLabels : Std.HashSet String := .ofArray <|
+    uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
+  usesLabels := usesLabels.erase latexLabel
+  usesLabels := part.usesLabels.foldl (·.insert ·) usesLabels |>.filter (· ∉ part.excludesLabels)
+  return { uses := usesLabels.toArray, leanOk := !uses.contains ``sorryAx }
+
+/-- Infer the used constants of a node as (statement uses, proof uses). -/
+def Node.inferUses (node : Node) : m (InferredUses × InferredUses) := do
+  let (statementUsed, proofUsed) ← collectUsed node.name
+  if let some proof := node.proof then
+    return (
+      ← node.statement.inferUses node.latexLabel statementUsed,
+      ← proof.inferUses node.latexLabel proofUsed
+    )
+  else
+    return (
+      ← node.statement.inferUses node.latexLabel (statementUsed ∪ proofUsed),
+      InferredUses.empty
+    )
+
 /-- Merges and converts an array of `NodePart` to LaTeX. It is assumed that `part ∈ allParts`. -/
-def NodePart.toLatex (part : NodePart) (allParts : Array NodePart := #[part])
-    (title : Option String := none) (additionalContent : String := "") : m Latex := do
+def NodePart.toLatex (part : NodePart) (allParts : Array NodePart := #[part]) (inferredUses : InferredUses)
+    (title : Option String := none) (additionalContent : String := "") (defaultText : String := "") : m Latex := do
   let mut out := ""
   out := out ++ "\\begin{" ++ part.latexEnv ++ "}"
   if let some title := title then
@@ -51,19 +85,18 @@ def NodePart.toLatex (part : NodePart) (allParts : Array NodePart := #[part])
   out := out ++ "\n"
 
   -- Take union of uses
-  let uses := allParts.flatMap (·.uses)
-  unless uses.isEmpty do
-    out := out ++ "\\uses{" ++ ",".intercalate uses.toList ++ "}\n"
+  unless inferredUses.uses.isEmpty do
+    out := out ++ "\\uses{" ++ ",".intercalate inferredUses.uses.toList ++ "}\n"
 
   out := out ++ additionalContent
 
   -- \leanok only if all parts are leanOk
-  if allParts.all (·.leanOk) then
+  if inferredUses.leanOk then
     out := out ++ "\\leanok\n"
 
   -- If not specified, the main text defaults to the first non-empty text in the parts
   let text := if !part.text.isEmpty then part.text else
-    allParts.findSome? (fun p => if !p.text.isEmpty then p.text else none) |>.getD ""
+    allParts.findSome? (fun p => if !p.text.isEmpty then p.text else none) |>.getD defaultText
   let textLatex := (preprocessLatex text).trimAscii
   unless textLatex.isEmpty do
     out := out ++ textLatex ++ "\n"
@@ -99,11 +132,16 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     | _, _ => ""
   addLatex := addLatex ++ s!"% at {posStr}\n"
 
-  let statementLatex ← node.statement.toLatex (allNodes.map (·.statement)) (allNodes.findSome? (·.title)) addLatex
+  let inferredUsess ← allNodes.mapM (·.inferUses)
+  let statementUses := InferredUses.merge (inferredUsess.map (·.1))
+  let proofUses := InferredUses.merge (inferredUsess.map (·.2))
+
+  let statementLatex ← node.statement.toLatex (allNodes.map (·.statement)) statementUses (allNodes.findSome? (·.title)) addLatex
   match node.proof with
   | none => return statementLatex
   | some proof =>
-    let proofLatex ← proof.toLatex (allNodes.filterMap (·.proof))
+    let proofDocString := getProofDocString env node.name
+    let proofLatex ← proof.toLatex (allNodes.filterMap (·.proof)) proofUses (defaultText := proofDocString)
     return statementLatex ++ proofLatex
 
 /-- `LatexArtifact` represents an auxiliary output file for a single node,

@@ -219,15 +219,17 @@ def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[s
                 for seen in nodes:
                     if seen.name == name:
                         logger.warning(f"Merging {seen.latex_label} and {label} which both have \\lean{{{name}}}")
-                        seen.statement.uses |= set(source_info.uses)
+                        seen.statement.uses_labels |= set(source_info.uses)
                         label_alias[label] = seen.latex_label
                         label_to_source[seen.latex_label].statements.extend(label_to_source[label].statements)
                 continue
             seen_lean_names.add(name)
             statement = NodePart(
-                lean_ok=source_info.leanok,
                 text=node_source,
-                uses=set(source_info.uses),
+                uses=set(),
+                excludes=set(),
+                uses_labels=set(source_info.uses),
+                excludes_labels=set(),
                 latex_env=env
             )
             node = Node(
@@ -279,17 +281,19 @@ def parse_nodes(source: str, convert_informal: bool) -> tuple[list[Node], dict[s
                     proved.proof.uses |= set(source_info.uses)
                     continue
                 proved.proof = NodePart(
-                    lean_ok=source_info.leanok,
                     text=node_source,
-                    uses=set(source_info.uses),
+                    uses=set(),
+                    excludes=set(),
+                    uses_labels=set(source_info.uses),
+                    excludes_labels=set(),
                     latex_env=env
                 )
 
     # Clear self-loops
     for node in nodes:
-        node.statement.uses.discard(node.latex_label)
+        node.statement.uses_labels.discard(node.latex_label)
         if node.proof is not None:
-            node.proof.uses.discard(node.latex_label)
+            node.proof.uses_labels.discard(node.latex_label)
 
     # Duplicate names should have been merged above
     assert len(set(n.name for n in nodes)) == len(nodes), "Duplicate Lean names in nodes found"
