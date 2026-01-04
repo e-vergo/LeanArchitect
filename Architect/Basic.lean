@@ -14,13 +14,13 @@ structure NodePart where
   /-- The natural language description of this part. -/
   text : String
   /-- The specified set of nodes that this node depends on, in addition to inferred ones. -/
-  uses : Array Name := #[]
+  uses : Array Name
   /-- The set of nodes to exclude from `uses`. -/
-  excludes : Array Name := #[]
+  excludes : Array Name
   /-- Additional LaTeX labels of nodes that this node depends on. -/
-  usesLabels : Array String := #[]
+  usesLabels : Array String
   /-- The set of labels to exclude from `usesLabels`. -/
-  excludesLabels : Array String := #[]
+  excludesLabels : Array String
   /-- The LaTeX environment to use for this part. -/
   latexEnv : String
 deriving Inhabited, Repr, FromJson, ToJson, ToExpr
