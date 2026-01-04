@@ -73,7 +73,7 @@ syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
 syntax blueprintProofOption := &"proof" " := " docComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
-syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
+syntax blueprintTitleOption := &"title" " := " (docComment <|> str)
 syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
@@ -142,7 +142,7 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (title := $str:str)) =>
         config := { config with title := str.getString }
       | `(blueprintOption| (title := $doc:docComment)) =>
-        config := { config with title := (← getDocStringText doc).trimAscii.copy }
+        config := { config with title := (← getDocStringText doc).trim }
       | `(blueprintOption| (notReady := true)) =>
         config := { config with notReady := .true }
       | `(blueprintOption| (notReady := false)) =>
