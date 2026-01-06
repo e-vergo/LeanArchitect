@@ -131,7 +131,7 @@ After tagging with `@[blueprint]`, LeanArchitect will:
 
 You may override the constants used in the statement or proof with the `uses` and `proofUses` options, or with the `using` tactic.
 
-To view the extracted blueprint data of a node, use `@[blueprint?]`.
+To view the extracted blueprint data, use `#show_blueprint` or `#show_blueprint theorem_name`.
 
 The supported options of `@[blueprint]` are:
 
@@ -143,7 +143,7 @@ The supported options of `@[blueprint]` are:
   (proof := /-- ... -/)     -- The proof of the node in LaTeX (default: the docstrings in proof tactics)
   (uses := [a, "b"])        -- The dependencies of the node, as Lean constants or LaTeX labels (default: inferred)
   (proofUses := [a, "b"])   -- The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred)
-  (title := "Title")        -- The title of the node in LaTeX
+  (title := /-- Title -/)   -- The title of the node in LaTeX
   (notReady := true)        -- Whether the node is not ready
   (discussion := 123)       -- The discussion issue number of the node
   (latexEnv := "lemma")     -- The LaTeX environment to use for the node (default: "theorem" or "definition")
