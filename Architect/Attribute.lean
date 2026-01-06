@@ -38,9 +38,9 @@ structure Config where
   trace : Bool := false
 deriving Repr
 
-syntax blueprintStatementOption := &"statement" " := " plainDocComment
+syntax blueprintStatementOption := &"statement" " := " docComment
 syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
-syntax blueprintProofOption := &"proof" " := " plainDocComment
+syntax blueprintProofOption := &"proof" " := " docComment
 syntax blueprintUsesOption := &"uses" " := " "[" (ident <|> str),* "]"
 syntax blueprintProofUsesOption := &"proofUses" " := " "[" (ident <|> str),* "]"
 syntax blueprintTitleOption := &"title" " := " str
