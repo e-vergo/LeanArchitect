@@ -1,4 +1,5 @@
 import Architect
+import Std.Time.DateTime.Timestamp
 
 open Lean Elab Term Std.Time in
 elab "now_ms%" : term => do
