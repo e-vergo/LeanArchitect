@@ -1,9 +1,14 @@
 import Lake
 open System Lake DSL
 
-package LeanArchitect
+package LeanArchitect where
+  testDriver := "ArchitectTest"
 
+@[default_target]
 lean_lib Architect
+
+lean_lib ArchitectTest where
+  globs := #[.submodules `ArchitectTest]
 
 @[default_target]
 lean_exe extract_blueprint where
