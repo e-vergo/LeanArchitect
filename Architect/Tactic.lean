@@ -21,6 +21,7 @@ private def addEntryFn (s : State) (e : Entry) : State :=
   | none => s.insert e.1 #[e.2]
   | some es => s.insert e.1 (es.push e.2)
 
+/-- The environment extension that stores proof docstrings. -/
 initialize proofDocStringExt : SimplePersistentEnvExtension Entry State ←
   registerSimplePersistentEnvExtension {
     addEntryFn := addEntryFn
