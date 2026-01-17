@@ -1,6 +1,7 @@
 import Lean
 import Batteries.Lean.NameMapAttribute
 import SubVerso.Highlighting
+import Architect.Highlighting
 
 
 open Lean Elab
@@ -107,8 +108,54 @@ def addHighlightedCode (name : Name) (hl : SubVerso.Highlighting.Highlighted) : 
 def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.Highlighting.Highlighted :=
   highlightedCodeExt.find? env name
 
+/--
+Compute SubVerso highlighting for source code at a given range in a file.
+This re-elaborates the source with proper info tree context.
+-/
+def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
+    (env : Environment) (opts : Options := {}) : IO (Option SubVerso.Highlighting.Highlighted) := do
+  try
+    -- Read the full file
+    let contents ← IO.FS.readFile file
+
+    -- Extract the relevant range (1-indexed lines, 0-indexed columns)
+    let lines := contents.splitOn "\n"
+    let startLine := range.pos.line - 1  -- Convert to 0-indexed
+    let endLine := range.endPos.line - 1
+
+    if startLine >= lines.length || endLine >= lines.length then
+      return none
+
+    -- Extract lines in range
+    let mut extractedLines : Array String := #[]
+    for i in [startLine:endLine + 1] do
+      if h : i < lines.length then
+        let line := lines[i]
+        if i == startLine && i == endLine then
+          -- Single line: extract substring
+          extractedLines := extractedLines.push ((line.drop range.pos.column).take (range.endPos.column - range.pos.column)).toString
+        else if i == startLine then
+          -- First line: from column to end
+          extractedLines := extractedLines.push (line.drop range.pos.column).toString
+        else if i == endLine then
+          -- Last line: from start to column
+          extractedLines := extractedLines.push (line.take range.endPos.column).toString
+        else
+          -- Middle lines: full line
+          extractedLines := extractedLines.push line
+
+    let source := "\n".intercalate extractedLines.toList
+
+    -- We need to create a self-contained file for highlighting.
+    -- For now, just highlight the raw source without re-elaboration.
+    -- Full re-elaboration would require reconstructing imports.
+    let (hl, _) ← highlightSource source env opts file.toString
+    return some hl
+  catch _ =>
+    return none
+
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
-def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
+def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM NodeWithPos := do
   let env ← getEnv
   if !env.contains node.name then
     return { node with hasLean := false, location := none, proofLocation := none, file := none }
@@ -117,19 +164,22 @@ def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
     | none => env.header.mainModule
   let (location, proofLocation) := match ← findDeclarationRanges? node.name with
     | some ranges =>
-      -- Use selectionRange for the signature (excludes proof body)
-      let loc := some { module, range := ranges.selectionRange }
-      -- Proof body location: from end of signature (selectionRange) to end of full range
-      -- Only set if this node has a proof and the ranges differ (signature != full)
-      let proofLoc := if node.proof.isSome && ranges.selectionRange.endPos != ranges.range.endPos then
-        some { pos := ranges.selectionRange.endPos, charUtf16 := ranges.selectionRange.charUtf16,
-               endPos := ranges.range.endPos, endCharUtf16 := ranges.range.endCharUtf16 }
-      else
-        none
-      (loc, proofLoc)
+      -- Use full range for the declaration (signature + proof body)
+      -- Python will extract signature vs proof body from the source text
+      let loc : DeclarationLocation := { module, range := ranges.range }
+      -- Proof body location: not needed since Python extracts it from the full source
+      -- Keep for backwards compatibility but it won't be used
+      let proofLoc : Option DeclarationRange := none
+      (some loc, proofLoc)
     | none => (none, none)
   let file ← (← getSrcSearchPath).findWithExt "lean" module
-  let highlightedCode := getHighlightedCode? env node.name
+
+  -- Check for pre-computed highlighting first, otherwise compute on-demand if requested
+  let mut highlightedCode := getHighlightedCode? env node.name
+  if highlightedCode.isNone && computeHighlight then
+    if let (some f, some loc) := (file, location) then
+      highlightedCode ← computeHighlighting f loc.range env (← getOptions)
+
   return { node with hasLean := true, location, proofLocation, file, highlightedCode }
 
 section ResolveConst

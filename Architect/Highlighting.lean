@@ -3,114 +3,148 @@ Copyright (c) 2025 LeanArchitect contributors. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
 import Lean
-import Architect.Basic
 import SubVerso.Highlighting
-import Batteries.Data.String.Matcher
 
 /-!
 # Highlighted Code Capture for Blueprint Declarations
 
-This module provides a linter that captures SubVerso highlighted code for declarations
-tagged with `@[blueprint]`. The highlighted code is stored in an environment extension
-and can be retrieved later when generating documentation.
-
-The highlighting is captured during the linting phase when info trees are still
-available, then stored for later retrieval.
+This module provides functionality to capture SubVerso highlighted code for declarations.
+It follows the pattern used by the Lean 4 reference manual (Verso) to re-elaborate source
+code with proper info tree context, which is required for semantic syntax highlighting.
 -/
 
-open Lean Elab Command Term Meta Linter
+open Lean Elab Command Term Meta Parser
+open SubVerso.Highlighting
 
 namespace Architect
 
-/-- Option to enable/disable the blueprint highlighting linter. -/
-register_option linter.blueprintHighlighting : Bool := {
+/-- Option to enable/disable blueprint highlighting. -/
+register_option blueprint.highlighting : Bool := {
   defValue := true
-  descr := "Enables the blueprint highlighting linter that captures SubVerso highlighted code."
+  descr := "Enables SubVerso syntax highlighting for blueprint declarations."
 }
 
-/-- Gets the value of the `linter.blueprintHighlighting` option. -/
-private def getLinterBlueprintHighlighting (o : LinterOptions) : Bool :=
-  getLinterValue linter.blueprintHighlighting o
-
 /-- Get names suppressed for highlighting (similar to SubVerso's approach). -/
-private def getSuppressedNamespaces : CoreM (List Name) := do
-  -- Could be made configurable via an option
+def getSuppressedNamespaces : CoreM (List Name) := do
   return []
 
 /--
-Finds all syntax nodes matching a predicate.
+Run a command elaboration action, capturing info trees with proper context.
+This wraps the action in `withInfoTreeContext` to ensure SubVerso can process the trees.
 -/
-private partial def findAllSyntax (stx : Syntax) (p : Syntax → Bool) : Array Syntax :=
-  let found := if p stx then #[stx] else #[]
-  match stx with
-  | .node _ _ args => found ++ args.flatMap (findAllSyntax · p)
-  | _ => found
+def runCommand (act : CommandElabM Unit) (stx : Syntax) (ctx : Command.Context)
+    (state : Command.State) : IO Command.State := do
+  let act' := withInfoTreeContext
+    (mkInfoTree := pure ∘ InfoTree.node (.ofCommandInfo {elaborator := `Architect.highlight, stx}))
+    act
+  match ← EIO.toIO' <| (act' ctx).run state with
+  | .ok ((), state') => return state'
+  | .error e => throw <| IO.userError s!"Command elaboration failed: {← e.toMessageData.toString}"
 
 /--
-Extracts the declaration name from a declId syntax.
+Run SubVerso highlighting in the appropriate monad context.
 -/
-private def getDeclName? (stx : Syntax) : Option Ident :=
-  if stx.getKind == ``Lean.Parser.Command.declId then
-    let id := stx[0]
-    if id.isIdent then some ⟨id⟩ else none
-  else if stx.isIdent then
-    some ⟨stx⟩
-  else
-    none
+private def runHighlighting (fileMap : FileMap) (cmds : Array Syntax)
+    (trees : PersistentArray InfoTree) (messages : Array Message)
+    (env : Environment) (opts : Options) : IO Highlighted := do
+  let suppressedNS : List Name := []
+
+  -- Create contexts for running TermElabM
+  let coreCtx : Core.Context := {
+    fileName := "<blueprint>"
+    fileMap
+    options := opts
+    currNamespace := `main
+    openDecls := []
+  }
+  let coreState : Core.State := { env }
+  let metaCtx : Meta.Context := {}
+  let metaState : Meta.State := {}
+  let termCtx : Term.Context := {}
+  let termState : Term.State := {}
+
+  -- Run highlighting for each command and concatenate
+  let act : TermElabM Highlighted := do
+    let mut result := Highlighted.empty
+    let mut lastPos : String.Pos.Raw := cmds[0]? >>= (·.getRange?.map (·.start)) |>.getD 0
+    for cmd in cmds do
+      if !isTerminalCommand cmd then
+        let hl ← highlightIncludingUnparsed cmd messages trees suppressedNS (startPos? := lastPos)
+        result := result ++ hl
+        lastPos := (cmd.getTrailingTailPos?).getD lastPos
+    return result
+
+  match ← EIO.toIO' <| act.run termCtx termState |>.run metaCtx metaState |>.run coreCtx coreState with
+  | .ok (((hl, _), _), _) => return hl
+  | .error e => throw <| IO.userError s!"Highlighting failed: {← e.toMessageData.toString}"
 
 /--
-Check if a syntax tree contains a `@[blueprint]` attribute.
-This checks the syntax directly rather than the environment extension,
-which is necessary because the `@[blueprint]` attribute has
-`applicationTime := .afterCompilation` and isn't available during elaboration.
+Highlights Lean source code by re-elaborating it with proper info tree context.
+
+This follows the pattern used by Verso (Lean 4 reference manual) to get properly
+contextualized info trees that SubVerso can process.
+
+The source should be complete Lean code (with imports if needed).
+Returns highlighted code and any messages from elaboration.
 -/
-private def hasBlueprintAttribute (stx : Syntax) : Bool :=
-  -- Find all declModifiers in the syntax
-  let modifiers := findAllSyntax stx fun s =>
-    s.getKind == ``Lean.Parser.Command.declModifiers
-  -- Check if any modifier contains "blueprint" in its text representation
-  modifiers.any fun mods =>
-    let str := mods.reprint.getD ""
-    str.containsSubstr "blueprint"
+def highlightSource (source : String) (env : Environment) (opts : Options := {})
+    (fileName : String := "<blueprint>") : IO (Highlighted × MessageLog) := do
+  let inputCtx := mkInputContext source fileName
+  let commandCtx : Command.Context := {
+    fileName
+    fileMap := FileMap.ofString source
+    snap? := none
+    cancelTk? := none
+  }
+
+  let mut commandState : Command.State := Command.mkState env {} opts
+  let mut parserState : ModuleParserState := {}
+  let mut cmds : Array Syntax := #[]
+
+  -- Parse and elaborate all commands
+  repeat do
+    let scope := commandState.scopes.head!
+    let pmctx := {
+      env := commandState.env
+      options := scope.opts
+      currNamespace := scope.currNamespace
+      openDecls := scope.openDecls
+    }
+    let (cmd, ps', messages) := parseCommand inputCtx pmctx parserState commandState.messages
+    cmds := cmds.push cmd
+    parserState := ps'
+    commandState := { commandState with messages }
+
+    -- Elaborate with info tree context
+    commandState ← runCommand (elabCommand cmd) cmd commandCtx commandState
+
+    if isTerminalCommand cmd then break
+
+  -- Now highlight using the captured info trees
+  let trees := commandState.infoState.trees
+  let nonSilentMsgs := commandState.messages.toArray.filter (!·.isSilent)
+
+  -- Run highlighting in a TermElabM context
+  let highlighted ← runHighlighting inputCtx.fileMap cmds trees nonSilentMsgs commandState.env opts
+
+  return (highlighted, commandState.messages)
 
 /--
-Process a single declaration syntax, extracting highlighted code if it's in the blueprint.
+Highlights a single declaration from source code.
 
-Note: SubVerso highlighting is currently disabled due to panics with context-free info tree nodes.
-The linter still runs to detect @[blueprint] declarations but doesn't extract highlighting.
-The \leanposition{} command is still emitted by Output.lean based on declaration ranges.
+This is the main entry point for blueprint highlighting.
+Takes complete Lean source and returns highlighted code.
 -/
-private def processDeclaration (_declStx : Syntax) : CommandElabM Unit := do
-  -- SubVerso highlighting disabled - causes panics with "unexpected context-free info tree node"
-  -- when processing info trees during the linter phase.
-  -- TODO: Investigate running SubVerso in a post-processing phase instead.
-  return
+def highlightDeclaration (source : String) (env : Environment) (opts : Options := {}) :
+    IO Highlighted := do
+  let (hl, _) ← highlightSource source env opts
+  return hl
 
 /--
-A linter that captures SubVerso highlighted code for blueprint declarations.
-
-This linter runs after each declaration is elaborated. If the declaration is
-tagged with `@[blueprint]`, it captures the highlighted code and stores it
-in the `highlightedCodeExt` environment extension.
+Creates a minimal source file that imports necessary modules and contains the declaration.
 -/
-def blueprintHighlightingLinter : Linter where
-  run := withSetOptionIn fun stx => do
-    -- Skip if linting is disabled
-    unless getLinterBlueprintHighlighting (← getLinterOptions) do return
-
-    -- Find declarations in the syntax
-    let decls := findAllSyntax stx fun s =>
-      s.getKind == ``Lean.Parser.Command.declaration ||
-      s.getKind == ``Lean.Parser.Command.theorem ||
-      s.getKind == ``Lean.Parser.Command.definition ||
-      s.getKind == ``Lean.Parser.Command.abbrev
-
-    for declStx in decls.toList do
-      processDeclaration declStx
-
-  name := `blueprintHighlighting
-
-/-- Register the blueprint highlighting linter. -/
-initialize addLinter blueprintHighlightingLinter
+def mkMinimalSource (imports : Array Name) (declText : String) : String :=
+  let importLines := imports.map (fun n => s!"import {n}") |>.toList |> "\n".intercalate
+  s!"{importLines}\n\n{declText}"
 
 end Architect

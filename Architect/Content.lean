@@ -33,18 +33,22 @@ def BlueprintContent.order (l r : BlueprintContent) : Bool :=
   | some _, none => true
   | _, _ => false
 
-/-- Get blueprint contents of the current module. -/
-def getMainModuleBlueprintContents : CoreM (Array BlueprintContent) := do
+/-- Get blueprint contents of the current module.
+If `computeHighlight` is true, SubVerso highlighting will be computed for declarations. -/
+def getMainModuleBlueprintContents (computeHighlight : Bool := false) : CoreM (Array BlueprintContent) := do
   let env ← getEnv
-  let nodes ← (blueprintExt.getEntries env).toArray.mapM fun (_, node) => BlueprintContent.node <$> node.toNodeWithPos
+  let nodes ← (blueprintExt.getEntries env).toArray.mapM fun (_, node) =>
+    BlueprintContent.node <$> node.toNodeWithPos computeHighlight
   let modDocs := (getMainModuleBlueprintDoc env).toArray.map BlueprintContent.modDoc
   return (nodes ++ modDocs).qsort BlueprintContent.order
 
-/-- Get blueprint contents of an imported module. -/
-def getBlueprintContents (module : Name) : CoreM (Array BlueprintContent) := do
+/-- Get blueprint contents of an imported module.
+If `computeHighlight` is true, SubVerso highlighting will be computed for declarations. -/
+def getBlueprintContents (module : Name) (computeHighlight : Bool := false) : CoreM (Array BlueprintContent) := do
   let env ← getEnv
   let some modIdx := env.getModuleIdx? module | return #[]
-  let nodes ← (blueprintExt.getModuleEntries env modIdx).mapM fun (_, node) => BlueprintContent.node <$> node.toNodeWithPos
+  let nodes ← (blueprintExt.getModuleEntries env modIdx).mapM fun (_, node) =>
+    BlueprintContent.node <$> node.toNodeWithPos computeHighlight
   let modDocs := (getModuleBlueprintDoc? env module).getD #[] |>.map BlueprintContent.modDoc
   return (nodes ++ modDocs).qsort BlueprintContent.order
 
