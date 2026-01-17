@@ -189,12 +189,14 @@ def splitAtDefinitionAssign (hl : Highlighted) : Highlighted × Option Highlight
   let mut sawDefKeyword := false
   let mut depth : Int := 0
   let mut splitIdx : Option Nat := none
+  let mut defKeywordIdx : Option Nat := none
 
   for i in [:tokens.size] do
     let (node, isDefKw) := tokens[i]!
     if isDefKw then
       sawDefKeyword := true
       depth := 0
+      defKeywordIdx := some i
 
     if sawDefKeyword then
       match node with
@@ -217,10 +219,11 @@ def splitAtDefinitionAssign (hl : Highlighted) : Highlighted × Option Highlight
   match splitIdx with
   | none => return (hl, none)
   | some idx =>
-    -- Reconstruct signature (tokens 0..idx inclusive) and body (tokens idx+1..)
+    -- Reconstruct signature (from def keyword to `:=` inclusive) and body (after `:=`)
+    let startIdx := defKeywordIdx.getD 0
     let mut signature : Highlighted := .empty
     let mut body : Highlighted := .empty
-    for i in [:tokens.size] do
+    for i in [startIdx:tokens.size] do
       let (node, _) := tokens[i]!
       if i <= idx then
         signature := signature ++ node
