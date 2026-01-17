@@ -158,6 +158,122 @@ def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
   catch _ =>
     return none
 
+open SubVerso.Highlighting in
+/-- Split highlighted code at a character position.
+    Returns (before, after) where before contains characters [0, pos) and after contains [pos, end).
+    This preserves all highlighting information by walking the tree and splitting at the exact position. -/
+partial def splitHighlightedAtPosition (hl : Highlighted) (pos : Nat) : Highlighted × Highlighted := Id.run do
+  -- We traverse the tree, accumulating characters until we reach `pos`
+  let mut todo : List (Option Highlighted) := [some hl]
+  let mut charCount : Nat := 0
+  let mut before : Highlighted := .empty
+  let mut after : Highlighted := .empty
+  let mut inAfter := false
+
+  while true do
+    match todo with
+    | [] => break
+    | none :: rest =>
+      todo := rest
+    | some (.seq xs) :: rest =>
+      todo := xs.toList.map some ++ rest
+    | some (.span msgs content) :: rest =>
+      -- For spans, we need to handle them specially - include the whole span in whichever part
+      -- the majority falls into. For simplicity, check if we've passed pos.
+      let contentStr := content.toString
+      if inAfter then
+        after := after ++ .span msgs content
+        todo := rest
+      else if charCount + contentStr.length <= pos then
+        before := before ++ .span msgs content
+        charCount := charCount + contentStr.length
+        todo := rest
+      else
+        -- Span straddles the boundary - recursively split the content
+        let (contentBefore, contentAfter) := splitHighlightedAtPosition content (pos - charCount)
+        before := before ++ .span msgs contentBefore
+        after := after ++ .span msgs contentAfter
+        inAfter := true
+        charCount := pos
+        todo := rest
+    | some (.tactics goals startPos endPos content) :: rest =>
+      let contentStr := content.toString
+      if inAfter then
+        after := after ++ .tactics goals startPos endPos content
+        todo := rest
+      else if charCount + contentStr.length <= pos then
+        before := before ++ .tactics goals startPos endPos content
+        charCount := charCount + contentStr.length
+        todo := rest
+      else
+        let (contentBefore, contentAfter) := splitHighlightedAtPosition content (pos - charCount)
+        before := before ++ .tactics goals startPos endPos contentBefore
+        after := after ++ .tactics goals startPos endPos contentAfter
+        inAfter := true
+        charCount := pos
+        todo := rest
+    | some node :: rest =>
+      -- Handle text, token, point, unparsed
+      let nodeStr := node.toString
+      let nodeLen := nodeStr.length
+      if inAfter then
+        after := after ++ node
+        todo := rest
+      else if charCount + nodeLen <= pos then
+        before := before ++ node
+        charCount := charCount + nodeLen
+        todo := rest
+      else
+        -- This node straddles the boundary - need to split it
+        let splitPoint := pos - charCount
+        match node with
+        | .text s =>
+          before := before ++ .text (s.take splitPoint).toString
+          after := after ++ .text (s.drop splitPoint).toString
+        | .token _ =>
+          -- Tokens are atomic - put in before if any part is before pos
+          before := before ++ node
+        | .unparsed s =>
+          before := before ++ .unparsed (s.take splitPoint).toString
+          after := after ++ .unparsed (s.drop splitPoint).toString
+        | .point .. =>
+          -- Points have no length, keep in before
+          before := before ++ node
+        | _ => pure () -- seq, span, tactics handled above
+        inAfter := true
+        charCount := pos
+        todo := rest
+
+  return (before, after)
+
+/-- Calculate the character offset from declaration start to selectionRange end.
+    This accounts for multi-line ranges by reading the source file. -/
+def calculateSignatureLength (file : System.FilePath) (declStart : Position) (sigEnd : Position) : IO Nat := do
+  let contents ← IO.FS.readFile file
+  let lines := contents.splitOn "\n"
+
+  -- Convert Position to character offset
+  let mut offset : Nat := 0
+
+  -- Add characters from lines between declStart and sigEnd
+  for lineIdx in [declStart.line - 1 : sigEnd.line] do
+    if h : lineIdx < lines.length then
+      let line := lines[lineIdx]
+      if lineIdx == declStart.line - 1 && lineIdx == sigEnd.line - 1 then
+        -- Same line: count from declStart.column to sigEnd.column
+        offset := sigEnd.column - declStart.column
+      else if lineIdx == declStart.line - 1 then
+        -- First line: count from declStart.column to end of line (+ newline)
+        offset := line.length - declStart.column + 1
+      else if lineIdx == sigEnd.line - 1 then
+        -- Last line: count from start to sigEnd.column
+        offset := offset + sigEnd.column
+      else
+        -- Middle line: count full line + newline
+        offset := offset + line.length + 1
+
+  return offset
+
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
 def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM NodeWithPos := do
   let env ← getEnv
@@ -194,25 +310,22 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
 
   let file ← (← getSrcSearchPath).findWithExt "lean" module
 
-  -- Compute highlighting for each range separately (the clean way)
-  let mut highlightedCode : Option SubVerso.Highlighting.Highlighted := none
-  let mut highlightedSignature : Option SubVerso.Highlighting.Highlighted := none
-  let mut highlightedProofBody : Option SubVerso.Highlighting.Highlighted := none
-
-  -- Check for pre-computed full highlighting first
-  highlightedCode := getHighlightedCode? env node.name
-
-  if computeHighlight then
+  -- Get or compute full highlighted code
+  let mut highlightedCode := getHighlightedCode? env node.name
+  if highlightedCode.isNone && computeHighlight then
     if let (some f, some r) := (file, ranges) then
-      let opts ← getOptions
-      -- Compute signature highlighting from selectionRange
-      highlightedSignature ← computeHighlighting f r.selectionRange env opts
-      -- Compute proof body highlighting from proofLocation range
-      if let some proofLoc := proofLocation then
-        highlightedProofBody ← computeHighlighting f proofLoc env opts
-      -- Compute full highlighting if not already present
-      if highlightedCode.isNone then
-        highlightedCode ← computeHighlighting f r.range env opts
+      highlightedCode ← computeHighlighting f r.range env (← getOptions)
+
+  -- Split highlighted code at signature boundary using position information
+  let (highlightedSignature, highlightedProofBody) ← do
+    match (highlightedCode, file, ranges) with
+    | (some hl, some f, some r) =>
+      -- Calculate the character offset where signature ends
+      let sigLength ← calculateSignatureLength f r.range.pos r.selectionRange.endPos
+      let (sig, body) := splitHighlightedAtPosition hl sigLength
+      let bodyOpt := if body.isEmpty then none else some body
+      pure (some sig, bodyOpt)
+    | _ => pure (none, none)
 
   return { node with
     hasLean := true, location, proofLocation, file,
