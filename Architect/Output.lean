@@ -171,9 +171,14 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
   addLatex := addLatex ++ s!"% at {posStr}\n"
 
   -- Emit \leanposition and \leansource INSIDE the environment so plasTeX attaches them to the correct node
+  -- leanposition uses selectionRange (signature only, excludes proof body)
   if let (some file, some location) := (node.file, node.location) then
     let positionStr := s!"{file}|{location.range.pos.line}|{location.range.pos.column}|{location.range.endPos.line}|{location.range.endPos.column}"
     addLatex := addLatex ++ "\\leanposition{" ++ positionStr ++ "}\n"
+  -- Emit proof body position separately (for side-by-side proof display)
+  if let (some file, some proofLoc) := (node.file, node.proofLocation) then
+    let proofPosStr := s!"{file}|{proofLoc.pos.line}|{proofLoc.pos.column}|{proofLoc.endPos.line}|{proofLoc.endPos.column}"
+    addLatex := addLatex ++ "\\leanproofposition{" ++ proofPosStr ++ "}\n"
   if let some hl := node.highlightedCode then
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr

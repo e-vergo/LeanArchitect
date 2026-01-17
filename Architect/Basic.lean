@@ -52,6 +52,8 @@ structure NodeWithPos extends Node where
   hasLean : Bool
   /-- The location (module & range) the node is defined in. -/
   location : Option DeclarationLocation
+  /-- The proof body location (from end of signature to end of declaration). -/
+  proofLocation : Option DeclarationRange := none
   /-- The file the node is defined in. -/
   file : Option System.FilePath
   /-- SubVerso highlighted code for the declaration. -/
@@ -109,16 +111,26 @@ def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.High
 def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
   let env ← getEnv
   if !env.contains node.name then
-    return { node with hasLean := false, location := none, file := none }
+    return { node with hasLean := false, location := none, proofLocation := none, file := none }
   let module := match env.getModuleIdxFor? node.name with
     | some modIdx => env.allImportedModuleNames[modIdx]!
     | none => env.header.mainModule
-  let location := match ← findDeclarationRanges? node.name with
-    | some ranges => some { module, range := ranges.range }
-    | none => none
+  let (location, proofLocation) := match ← findDeclarationRanges? node.name with
+    | some ranges =>
+      -- Use selectionRange for the signature (excludes proof body)
+      let loc := some { module, range := ranges.selectionRange }
+      -- Proof body location: from end of signature (selectionRange) to end of full range
+      -- Only set if this node has a proof and the ranges differ (signature != full)
+      let proofLoc := if node.proof.isSome && ranges.selectionRange.endPos != ranges.range.endPos then
+        some { pos := ranges.selectionRange.endPos, charUtf16 := ranges.selectionRange.charUtf16,
+               endPos := ranges.range.endPos, endCharUtf16 := ranges.range.endCharUtf16 }
+      else
+        none
+      (loc, proofLoc)
+    | none => (none, none)
   let file ← (← getSrcSearchPath).findWithExt "lean" module
   let highlightedCode := getHighlightedCode? env node.name
-  return { node with hasLean := true, location, file, highlightedCode }
+  return { node with hasLean := true, location, proofLocation, file, highlightedCode }
 
 section ResolveConst
 
