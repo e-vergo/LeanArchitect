@@ -164,12 +164,24 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
     | none => env.header.mainModule
   let (location, proofLocation) := match ← findDeclarationRanges? node.name with
     | some ranges =>
-      -- Use full range for the declaration (signature + proof body)
-      -- Python will extract signature vs proof body from the source text
-      let loc : DeclarationLocation := { module, range := ranges.range }
-      -- Proof body location: not needed since Python extracts it from the full source
-      -- Keep for backwards compatibility but it won't be used
-      let proofLoc : Option DeclarationRange := none
+      -- selectionRange = signature only, range = full declaration including proof
+      let loc : DeclarationLocation := { module, range := ranges.selectionRange }
+      -- Proof body is from end of selectionRange to end of range
+      -- Compare by line number (and column if same line)
+      let selEnd := ranges.selectionRange.endPos
+      let fullEnd := ranges.range.endPos
+      let hasProofBody := selEnd.line < fullEnd.line ||
+        (selEnd.line == fullEnd.line && selEnd.column < fullEnd.column)
+      let proofLoc : Option DeclarationRange :=
+        if hasProofBody then
+          some {
+            pos := ranges.selectionRange.endPos
+            charUtf16 := ranges.selectionRange.charUtf16
+            endPos := ranges.range.endPos
+            endCharUtf16 := ranges.range.endCharUtf16
+          }
+        else
+          none
       (some loc, proofLoc)
     | none => (none, none)
   let file ← (← getSrcSearchPath).findWithExt "lean" module
