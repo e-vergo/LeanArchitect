@@ -274,11 +274,15 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
       highlightedCode ← computeHighlighting f r.range env (← getOptions)
 
   -- Split highlighted code at the definition's := using bracket-aware parsing
+  -- Only split when the node has a proof; otherwise use full code as signature with no body
   let (highlightedSignature, highlightedProofBody) :=
     match highlightedCode with
     | some hl =>
-      let (sig, body) := splitAtDefinitionAssign hl
-      (some sig, body)
+      if node.proof.isSome then
+        let (sig, body) := splitAtDefinitionAssign hl
+        (some sig, body)
+      else
+        (some hl, none)
     | none => (none, none)
 
   return { node with
