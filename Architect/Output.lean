@@ -183,6 +183,16 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leansource{" ++ base64Json ++ "}\n"
+  -- Emit signature highlighting
+  if let some hl := node.highlightedSignature then
+    let jsonStr := (toJson hl).compress
+    let base64Json := stringToBase64 jsonStr
+    addLatex := addLatex ++ "\\leansignaturesource{" ++ base64Json ++ "}\n"
+  -- Emit proof body highlighting
+  if let some hl := node.highlightedProofBody then
+    let jsonStr := (toJson hl).compress
+    let base64Json := stringToBase64 jsonStr
+    addLatex := addLatex ++ "\\leanproofsource{" ++ base64Json ++ "}\n"
 
   let inferredUsess ← allNodes.mapM (·.inferUses)
   let statementUses := InferredUses.merge (inferredUsess.map (·.1))

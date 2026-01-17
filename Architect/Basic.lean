@@ -59,6 +59,10 @@ structure NodeWithPos extends Node where
   file : Option System.FilePath
   /-- SubVerso highlighted code for the declaration. -/
   highlightedCode : Option SubVerso.Highlighting.Highlighted := none
+  /-- SubVerso highlighted code for just the signature (up to and including `:=`). -/
+  highlightedSignature : Option SubVerso.Highlighting.Highlighted := none
+  /-- SubVerso highlighted code for just the proof body (after `:=`). -/
+  highlightedProofBody : Option SubVerso.Highlighting.Highlighted := none
 deriving Inhabited, Repr
 
 /-- Environment extension that stores the nodes of the blueprint. -/
@@ -154,6 +158,21 @@ def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
   catch _ =>
     return none
 
+open SubVerso.Highlighting in
+/-- Split highlighted code into (signature, body) at the first `:=` token.
+    Returns (full, none) if no `:=` is found (e.g., axiom declarations).
+    The `:=` token is included at the end of the signature. -/
+def splitAtAssign (hl : Highlighted) : Highlighted × Option Highlighted :=
+  let parts := hl.split (· == ":=")
+  if h : parts.size ≥ 2 then
+    let assignToken : Token := ⟨.keyword none none none, ":="⟩
+    let signature := parts[0] ++ .token assignToken
+    let bodyParts := parts.extract 1 parts.size
+    let body := bodyParts.foldl (· ++ ·) .empty
+    (signature, if body.isEmpty then none else some body)
+  else
+    (hl, none)
+
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
 def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM NodeWithPos := do
   let env ← getEnv
@@ -193,7 +212,17 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
     if let (some f, some loc) := (file, location) then
       highlightedCode ← computeHighlighting f loc.range env (← getOptions)
 
-  return { node with hasLean := true, location, proofLocation, file, highlightedCode }
+  -- Split into signature and body
+  let (highlightedSignature, highlightedProofBody) :=
+    match highlightedCode with
+    | some hl =>
+        let (sig, body) := splitAtAssign hl
+        (some sig, body)
+    | none => (none, none)
+
+  return { node with
+    hasLean := true, location, proofLocation, file,
+    highlightedCode, highlightedSignature, highlightedProofBody }
 
 section ResolveConst
 
