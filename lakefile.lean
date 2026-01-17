@@ -48,7 +48,7 @@ def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array Stri
 
 /-- A facet to extract the blueprint for a module. -/
 module_facet blueprint (mod : Module) : Unit := do
-  buildModuleBlueprint mod "tex" #[]
+  buildModuleBlueprint mod "tex" #["--highlight"]
 
 /-- A facet to extract JSON data of blueprint for a module. -/
 module_facet blueprintJson (mod : Module) : Unit := do
