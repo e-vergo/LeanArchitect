@@ -5,6 +5,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 import Lean
 import Architect.Basic
 import SubVerso.Highlighting
+import Batteries.Data.String.Matcher
 
 /-!
 # Highlighted Code Capture for Blueprint Declarations
@@ -58,9 +59,29 @@ private def getDeclName? (stx : Syntax) : Option Ident :=
     none
 
 /--
+Check if a syntax tree contains a `@[blueprint]` attribute.
+This checks the syntax directly rather than the environment extension,
+which is necessary because the `@[blueprint]` attribute has
+`applicationTime := .afterCompilation` and isn't available during elaboration.
+-/
+private def hasBlueprintAttribute (stx : Syntax) : Bool :=
+  -- Find all declModifiers in the syntax
+  let modifiers := findAllSyntax stx fun s =>
+    s.getKind == ``Lean.Parser.Command.declModifiers
+  -- Check if any modifier contains "blueprint" in its text representation
+  modifiers.any fun mods =>
+    let str := mods.reprint.getD ""
+    str.containsSubstr "blueprint"
+
+/--
 Process a single declaration syntax, extracting highlighted code if it's in the blueprint.
 -/
 private def processDeclaration (declStx : Syntax) : CommandElabM Unit := do
+  -- Check if this declaration has the @[blueprint] attribute in its syntax.
+  -- We check the syntax directly rather than the extension because the attribute
+  -- has applicationTime := .afterCompilation, so the extension isn't populated yet.
+  unless hasBlueprintAttribute declStx do return
+
   -- Try to extract the declaration name from the syntax
   let declIds := findAllSyntax declStx fun s =>
     s.getKind == ``Lean.Parser.Command.declId
@@ -74,9 +95,7 @@ private def processDeclaration (declStx : Syntax) : CommandElabM Unit := do
     catch _ =>
       continue  -- Name resolution failed, skip
 
-    -- Check if this declaration is in the blueprint
     let env ← getEnv
-    unless blueprintExt.find? env name |>.isSome do continue
 
     -- Check if we already have highlighted code for this declaration
     if getHighlightedCode? env name |>.isSome then continue
