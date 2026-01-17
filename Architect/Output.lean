@@ -15,6 +15,44 @@ Conversion from Lean nodes to LaTeX.
 
 abbrev Latex := String
 
+/-- Base64 encoding alphabet. -/
+private def base64Chars : String :=
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+/-- Array of base64 characters for efficient indexing. -/
+private def base64Array : Array Char := base64Chars.toList.toArray
+
+/-- Encode a ByteArray to base64. -/
+private def encodeBase64 (data : ByteArray) : String := Id.run do
+  let mut result := ""
+  let mut i := 0
+  while i < data.size do
+    let b0 := data.get! i
+    let b1 := if i + 1 < data.size then data.get! (i + 1) else 0
+    let b2 := if i + 2 < data.size then data.get! (i + 2) else 0
+
+    let c0 := (b0 >>> 2) &&& 0x3F
+    let c1 := ((b0 &&& 0x03) <<< 4) ||| ((b1 >>> 4) &&& 0x0F)
+    let c2 := ((b1 &&& 0x0F) <<< 2) ||| ((b2 >>> 6) &&& 0x03)
+    let c3 := b2 &&& 0x3F
+
+    result := result.push (base64Array[c0.toNat]!)
+    result := result.push (base64Array[c1.toNat]!)
+    if i + 1 < data.size then
+      result := result.push (base64Array[c2.toNat]!)
+    else
+      result := result.push '='
+    if i + 2 < data.size then
+      result := result.push (base64Array[c3.toNat]!)
+    else
+      result := result.push '='
+    i := i + 3
+  return result
+
+/-- Encode a String to base64 (UTF-8 encoded). -/
+private def stringToBase64 (s : String) : String :=
+  encodeBase64 s.toUTF8
+
 /-!
 We convert nodes to LaTeX.
 
@@ -137,12 +175,24 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
   let proofUses := InferredUses.merge (inferredUsess.map (·.2))
 
   let statementLatex ← node.statement.toLatex (allNodes.map (·.statement)) statementUses (allNodes.findSome? (·.title)) addLatex
-  match node.proof with
-  | none => return statementLatex
-  | some proof =>
-    let proofDocString := getProofDocString env node.name
-    let proofLatex ← proof.toLatex (allNodes.filterMap (·.proof)) proofUses (defaultText := proofDocString)
-    return statementLatex ++ proofLatex
+  let mainContent ← match node.proof with
+    | none => pure statementLatex
+    | some proof =>
+      let proofDocString := getProofDocString env node.name
+      let proofLatex ← proof.toLatex (allNodes.filterMap (·.proof)) proofUses (defaultText := proofDocString)
+      pure (statementLatex ++ proofLatex)
+
+  -- Emit \leanposition and \leansource commands for leanblueprint
+  let mut extraLatex := ""
+  if let (some file, some location) := (node.file, node.location) then
+    let positionStr := s!"{file}|{location.range.pos.line}|{location.range.pos.column}|{location.range.endPos.line}|{location.range.endPos.column}"
+    extraLatex := extraLatex ++ "\\leanposition{" ++ positionStr ++ "}\n"
+  if let some hl := node.highlightedCode then
+    let jsonStr := (toJson hl).compress
+    let base64Json := stringToBase64 jsonStr
+    extraLatex := extraLatex ++ "\\leansource{" ++ base64Json ++ "}\n"
+
+  return mainContent ++ extraLatex
 
 /-- `LatexArtifact` represents an auxiliary output file for a single node,
 containing its label (which is its filename) and content. -/
@@ -268,6 +318,8 @@ private def locationToJson (location : DeclarationLocation) : Json :=
     "range": $(rangeToJson location.range)
   }
 
+private def highlightedToJson (hl : SubVerso.Highlighting.Highlighted) : Json := toJson hl
+
 def NodeWithPos.toJson (node : NodeWithPos) : Json :=
   json% {
     "name": $(node.name),
@@ -279,7 +331,8 @@ def NodeWithPos.toJson (node : NodeWithPos) : Json :=
     "title": $(node.title),
     "hasLean": $(node.hasLean),
     "file": $(node.file),
-    "location": $(node.location.map locationToJson)
+    "location": $(node.location.map locationToJson),
+    "highlightedCode": $(node.highlightedCode.map highlightedToJson)
   }
 
 def BlueprintContent.toJson : BlueprintContent → Json

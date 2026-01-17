@@ -27,6 +27,9 @@ require batteries from git
 require Cli from git
   "https://github.com/mhuisi/lean4-cli" @ "v4.27.0-rc1"
 
+require subverso from git
+  "https://github.com/leanprover/subverso"
+
 def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array String) : FetchM (Job Unit) := do
   let exeJob ← extract_blueprint.fetch
   let modJob ← mod.leanArts.fetch

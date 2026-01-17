@@ -1,5 +1,6 @@
 import Lean
 import Architect.Content
+import SubVerso.Highlighting
 
 
 open Lean Meta Elab

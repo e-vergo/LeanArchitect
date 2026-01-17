@@ -1,5 +1,6 @@
 import Lean
 import Batteries.Lean.NameMapAttribute
+import SubVerso.Highlighting
 
 
 open Lean Elab
@@ -53,20 +54,9 @@ structure NodeWithPos extends Node where
   location : Option DeclarationLocation
   /-- The file the node is defined in. -/
   file : Option System.FilePath
+  /-- SubVerso highlighted code for the declaration. -/
+  highlightedCode : Option SubVerso.Highlighting.Highlighted := none
 deriving Inhabited, Repr
-
-def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
-  let env ← getEnv
-  if !env.contains node.name then
-    return { node with hasLean := false, location := none, file := none }
-  let module := match env.getModuleIdxFor? node.name with
-    | some modIdx => env.allImportedModuleNames[modIdx]!
-    | none => env.header.mainModule
-  let location := match ← findDeclarationRanges? node.name with
-    | some ranges => some { module, range := ranges.range }
-    | none => none
-  let file ← (← getSrcSearchPath).findWithExt "lean" module
-  return { node with hasLean := true, location, file }
 
 /-- Environment extension that stores the nodes of the blueprint. -/
 initialize blueprintExt : NameMapExtension Node ←
@@ -96,6 +86,39 @@ def addLeanNameOfLatexLabel (env : Environment) (latexLabel : String) (name : Na
 
 def getLeanNamesOfLatexLabel (env : Environment) (latexLabel : String) : Array Name :=
   latexLabelToLeanNamesExt.getState env |>.findD latexLabel #[]
+
+/-! ## Highlighted Code Extension
+
+This extension stores SubVerso highlighted code for declarations tagged with `@[blueprint]`.
+The highlighted code is captured during command elaboration when info trees are available.
+-/
+
+/-- Environment extension that stores highlighted code for blueprint declarations. -/
+initialize highlightedCodeExt : NameMapExtension SubVerso.Highlighting.Highlighted ←
+  registerNameMapExtension SubVerso.Highlighting.Highlighted
+
+/-- Add highlighted code for a declaration to the environment. -/
+def addHighlightedCode (name : Name) (hl : SubVerso.Highlighting.Highlighted) : CoreM Unit :=
+  modifyEnv fun env => highlightedCodeExt.addEntry env (name, hl)
+
+/-- Get highlighted code for a declaration from the environment. -/
+def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.Highlighting.Highlighted :=
+  highlightedCodeExt.find? env name
+
+/-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
+def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
+  let env ← getEnv
+  if !env.contains node.name then
+    return { node with hasLean := false, location := none, file := none }
+  let module := match env.getModuleIdxFor? node.name with
+    | some modIdx => env.allImportedModuleNames[modIdx]!
+    | none => env.header.mainModule
+  let location := match ← findDeclarationRanges? node.name with
+    | some ranges => some { module, range := ranges.range }
+    | none => none
+  let file ← (← getSrcSearchPath).findWithExt "lean" module
+  let highlightedCode := getHighlightedCode? env node.name
+  return { node with hasLean := true, location, file, highlightedCode }
 
 section ResolveConst
 
