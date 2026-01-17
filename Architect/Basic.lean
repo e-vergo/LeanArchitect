@@ -163,9 +163,15 @@ open SubVerso.Highlighting in
     This finds the `:=` that separates the signature from the body by:
     1. Looking for def/theorem/lemma/abbrev keyword
     2. Finding the `:=` at bracket depth 0 after that keyword
-    Returns (signature, body) where signature includes up to and including `:=`.
-    Returns (full, none) if no suitable `:=` is found. -/
-def splitAtDefinitionAssign (hl : Highlighted) : Highlighted × Option Highlighted := Id.run do
+
+    If `splitAtAssign` is true (default):
+      Returns (signature, body) where signature includes up to and including `:=`.
+    If `splitAtAssign` is false:
+      Returns (full code from def keyword, none) - strips prefix but doesn't split at `:=`.
+
+    Always strips any prefix before the def keyword (e.g., `@[blueprint ...]`). -/
+def splitAtDefinitionAssign (hl : Highlighted) (splitAtAssign : Bool := true)
+    : Highlighted × Option Highlighted := Id.run do
   -- Flatten to get all tokens in order
   let mut todo : List Highlighted := [hl]
   let mut tokens : Array (Highlighted × Bool) := #[]  -- (node, isDefKeyword)
@@ -215,21 +221,37 @@ def splitAtDefinitionAssign (hl : Highlighted) : Highlighted × Option Highlight
           else if c ∈ [')', ']', '}', '⟩'] then depth := depth - 1
       | _ => pure ()
 
-  -- If no split point found, return full code
+  -- Always start from def keyword to strip any prefix (e.g., @[blueprint ...])
+  let startIdx := defKeywordIdx.getD 0
+
+  -- If no split point found or splitAtAssign is false, return code from def keyword with no body
   match splitIdx with
-  | none => return (hl, none)
-  | some idx =>
-    -- Reconstruct signature (from def keyword to `:=` inclusive) and body (after `:=`)
-    let startIdx := defKeywordIdx.getD 0
-    let mut signature : Highlighted := .empty
-    let mut body : Highlighted := .empty
+  | none =>
+    -- No := found - return everything from def keyword
+    let mut result : Highlighted := .empty
     for i in [startIdx:tokens.size] do
       let (node, _) := tokens[i]!
-      if i <= idx then
-        signature := signature ++ node
-      else
-        body := body ++ node
-    return (signature, if body.isEmpty then none else some body)
+      result := result ++ node
+    return (result, none)
+  | some idx =>
+    if !splitAtAssign then
+      -- Don't split at := - return everything from def keyword
+      let mut result : Highlighted := .empty
+      for i in [startIdx:tokens.size] do
+        let (node, _) := tokens[i]!
+        result := result ++ node
+      return (result, none)
+    else
+      -- Reconstruct signature (from def keyword to `:=` inclusive) and body (after `:=`)
+      let mut signature : Highlighted := .empty
+      let mut body : Highlighted := .empty
+      for i in [startIdx:tokens.size] do
+        let (node, _) := tokens[i]!
+        if i <= idx then
+          signature := signature ++ node
+        else
+          body := body ++ node
+      return (signature, if body.isEmpty then none else some body)
 
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
 def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM NodeWithPos := do
@@ -274,15 +296,12 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
       highlightedCode ← computeHighlighting f r.range env (← getOptions)
 
   -- Split highlighted code at the definition's := using bracket-aware parsing
-  -- Only split when the node has a proof; otherwise use full code as signature with no body
+  -- Always strip @[blueprint ...] prefix; only split at := if there's a proof
   let (highlightedSignature, highlightedProofBody) :=
     match highlightedCode with
     | some hl =>
-      if node.proof.isSome then
-        let (sig, body) := splitAtDefinitionAssign hl
-        (some sig, body)
-      else
-        (some hl, none)
+      let (sig, body) := splitAtDefinitionAssign hl (splitAtAssign := node.proof.isSome)
+      (some sig, body)
     | none => (none, none)
 
   return { node with
