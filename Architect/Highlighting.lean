@@ -75,44 +75,16 @@ private def hasBlueprintAttribute (stx : Syntax) : Bool :=
 
 /--
 Process a single declaration syntax, extracting highlighted code if it's in the blueprint.
+
+Note: SubVerso highlighting is currently disabled due to panics with context-free info tree nodes.
+The linter still runs to detect @[blueprint] declarations but doesn't extract highlighting.
+The \leanposition{} command is still emitted by Output.lean based on declaration ranges.
 -/
-private def processDeclaration (declStx : Syntax) : CommandElabM Unit := do
-  -- Check if this declaration has the @[blueprint] attribute in its syntax.
-  -- We check the syntax directly rather than the extension because the attribute
-  -- has applicationTime := .afterCompilation, so the extension isn't populated yet.
-  unless hasBlueprintAttribute declStx do return
-
-  -- Try to extract the declaration name from the syntax
-  let declIds := findAllSyntax declStx fun s =>
-    s.getKind == ``Lean.Parser.Command.declId
-
-  for declIdStx in declIds.toList do
-    let some nameId := getDeclName? declIdStx | continue
-
-    -- Resolve the name
-    let name ← try
-      liftCoreM <| realizeGlobalConstNoOverloadWithInfo nameId
-    catch _ =>
-      continue  -- Name resolution failed, skip
-
-    let env ← getEnv
-
-    -- Check if we already have highlighted code for this declaration
-    if getHighlightedCode? env name |>.isSome then continue
-
-    -- Get info trees while they're still available
-    let trees ← getInfoTrees
-    let msgs := (← get).messages.toArray
-    let suppressedNS ← liftCoreM getSuppressedNamespaces
-
-    -- Generate highlighted code using SubVerso
-    try
-      let hl ← liftTermElabM <| SubVerso.Highlighting.highlight declStx msgs trees suppressedNS
-      -- Store the highlighted code in the extension
-      liftCoreM <| addHighlightedCode name hl
-      trace[blueprint.debug] "Captured highlighted code for {name}"
-    catch e =>
-      trace[blueprint.debug] "Failed to capture highlighting for {name}: {e.toMessageData}"
+private def processDeclaration (_declStx : Syntax) : CommandElabM Unit := do
+  -- SubVerso highlighting disabled - causes panics with "unexpected context-free info tree node"
+  -- when processing info trees during the linter phase.
+  -- TODO: Investigate running SubVerso in a post-processing phase instead.
+  return
 
 /--
 A linter that captures SubVerso highlighted code for blueprint declarations.
