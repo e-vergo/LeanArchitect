@@ -158,21 +158,6 @@ def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
   catch _ =>
     return none
 
-open SubVerso.Highlighting in
-/-- Split highlighted code into (signature, body) at the first `:=` token.
-    Returns (full, none) if no `:=` is found (e.g., axiom declarations).
-    The `:=` token is included at the end of the signature. -/
-def splitAtAssign (hl : Highlighted) : Highlighted × Option Highlighted :=
-  let parts := hl.split (· == ":=")
-  if h : parts.size ≥ 2 then
-    let assignToken : Token := ⟨.keyword none none none, ":="⟩
-    let signature := parts[0] ++ .token assignToken
-    let bodyParts := parts.extract 1 parts.size
-    let body := bodyParts.foldl (· ++ ·) .empty
-    (signature, if body.isEmpty then none else some body)
-  else
-    (hl, none)
-
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
 def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM NodeWithPos := do
   let env ← getEnv
@@ -181,44 +166,53 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
   let module := match env.getModuleIdxFor? node.name with
     | some modIdx => env.allImportedModuleNames[modIdx]!
     | none => env.header.mainModule
-  let (location, proofLocation) := match ← findDeclarationRanges? node.name with
-    | some ranges =>
-      -- range = full declaration including proof (used for display)
-      -- selectionRange = signature only (used to compute proof body start)
-      let loc : DeclarationLocation := { module, range := ranges.range }
+
+  -- Get declaration ranges from Lean
+  let ranges ← findDeclarationRanges? node.name
+  let (location, proofLocation) := match ranges with
+    | some r =>
+      -- range = full declaration including proof
+      -- selectionRange = signature only (name + type)
+      let loc : DeclarationLocation := { module, range := r.range }
       -- Proof body is from end of selectionRange to end of range
-      -- Compare by line number (and column if same line)
-      let selEnd := ranges.selectionRange.endPos
-      let fullEnd := ranges.range.endPos
+      let selEnd := r.selectionRange.endPos
+      let fullEnd := r.range.endPos
       let hasProofBody := selEnd.line < fullEnd.line ||
         (selEnd.line == fullEnd.line && selEnd.column < fullEnd.column)
       let proofLoc : Option DeclarationRange :=
         if hasProofBody then
           some {
-            pos := ranges.selectionRange.endPos
-            charUtf16 := ranges.selectionRange.charUtf16
-            endPos := ranges.range.endPos
-            endCharUtf16 := ranges.range.endCharUtf16
+            pos := r.selectionRange.endPos
+            charUtf16 := r.selectionRange.charUtf16
+            endPos := r.range.endPos
+            endCharUtf16 := r.range.endCharUtf16
           }
         else
           none
       (some loc, proofLoc)
     | none => (none, none)
+
   let file ← (← getSrcSearchPath).findWithExt "lean" module
 
-  -- Check for pre-computed highlighting first, otherwise compute on-demand if requested
-  let mut highlightedCode := getHighlightedCode? env node.name
-  if highlightedCode.isNone && computeHighlight then
-    if let (some f, some loc) := (file, location) then
-      highlightedCode ← computeHighlighting f loc.range env (← getOptions)
+  -- Compute highlighting for each range separately (the clean way)
+  let mut highlightedCode : Option SubVerso.Highlighting.Highlighted := none
+  let mut highlightedSignature : Option SubVerso.Highlighting.Highlighted := none
+  let mut highlightedProofBody : Option SubVerso.Highlighting.Highlighted := none
 
-  -- Split into signature and body
-  let (highlightedSignature, highlightedProofBody) :=
-    match highlightedCode with
-    | some hl =>
-        let (sig, body) := splitAtAssign hl
-        (some sig, body)
-    | none => (none, none)
+  -- Check for pre-computed full highlighting first
+  highlightedCode := getHighlightedCode? env node.name
+
+  if computeHighlight then
+    if let (some f, some r) := (file, ranges) then
+      let opts ← getOptions
+      -- Compute signature highlighting from selectionRange
+      highlightedSignature ← computeHighlighting f r.selectionRange env opts
+      -- Compute proof body highlighting from proofLocation range
+      if let some proofLoc := proofLocation then
+        highlightedProofBody ← computeHighlighting f proofLoc env opts
+      -- Compute full highlighting if not already present
+      if highlightedCode.isNone then
+        highlightedCode ← computeHighlighting f r.range env opts
 
   return { node with
     hasLean := true, location, proofLocation, file,
