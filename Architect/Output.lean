@@ -170,6 +170,15 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     | _, _ => ""
   addLatex := addLatex ++ s!"% at {posStr}\n"
 
+  -- Emit \leanposition and \leansource INSIDE the environment so plasTeX attaches them to the correct node
+  if let (some file, some location) := (node.file, node.location) then
+    let positionStr := s!"{file}|{location.range.pos.line}|{location.range.pos.column}|{location.range.endPos.line}|{location.range.endPos.column}"
+    addLatex := addLatex ++ "\\leanposition{" ++ positionStr ++ "}\n"
+  if let some hl := node.highlightedCode then
+    let jsonStr := (toJson hl).compress
+    let base64Json := stringToBase64 jsonStr
+    addLatex := addLatex ++ "\\leansource{" ++ base64Json ++ "}\n"
+
   let inferredUsess ← allNodes.mapM (·.inferUses)
   let statementUses := InferredUses.merge (inferredUsess.map (·.1))
   let proofUses := InferredUses.merge (inferredUsess.map (·.2))
@@ -182,17 +191,7 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
       let proofLatex ← proof.toLatex (allNodes.filterMap (·.proof)) proofUses (defaultText := proofDocString)
       pure (statementLatex ++ proofLatex)
 
-  -- Emit \leanposition and \leansource commands for leanblueprint
-  let mut extraLatex := ""
-  if let (some file, some location) := (node.file, node.location) then
-    let positionStr := s!"{file}|{location.range.pos.line}|{location.range.pos.column}|{location.range.endPos.line}|{location.range.endPos.column}"
-    extraLatex := extraLatex ++ "\\leanposition{" ++ positionStr ++ "}\n"
-  if let some hl := node.highlightedCode then
-    let jsonStr := (toJson hl).compress
-    let base64Json := stringToBase64 jsonStr
-    extraLatex := extraLatex ++ "\\leansource{" ++ base64Json ++ "}\n"
-
-  return mainContent ++ extraLatex
+  return mainContent
 
 /-- `LatexArtifact` represents an auxiliary output file for a single node,
 containing its label (which is its filename) and content. -/
