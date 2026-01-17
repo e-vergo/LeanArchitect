@@ -164,8 +164,9 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
     | none => env.header.mainModule
   let (location, proofLocation) := match ← findDeclarationRanges? node.name with
     | some ranges =>
-      -- selectionRange = signature only, range = full declaration including proof
-      let loc : DeclarationLocation := { module, range := ranges.selectionRange }
+      -- range = full declaration including proof (used for display)
+      -- selectionRange = signature only (used to compute proof body start)
+      let loc : DeclarationLocation := { module, range := ranges.range }
       -- Proof body is from end of selectionRange to end of range
       -- Compare by line number (and column if same line)
       let selEnd := ranges.selectionRange.endPos
