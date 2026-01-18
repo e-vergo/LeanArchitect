@@ -46,9 +46,14 @@ def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array Stri
           env := ← getAugmentedEnv
         }
 
-/-- A facet to extract the blueprint for a module. -/
+/-- A facet to extract the blueprint for a module (with syntax highlighting). -/
 module_facet blueprint (mod : Module) : Unit := do
   buildModuleBlueprint mod "tex" #["--highlight"]
+
+/-- A facet to extract the blueprint for a module (without syntax highlighting).
+    Use this if SubVerso highlighting causes panics on certain code patterns. -/
+module_facet blueprintPlain (mod : Module) : Unit := do
+  buildModuleBlueprint mod "tex" #[]
 
 /-- A facet to extract JSON data of blueprint for a module. -/
 module_facet blueprintJson (mod : Module) : Unit := do
@@ -70,17 +75,27 @@ def buildLibraryBlueprint (lib : LeanLib) (moduleFacet : Lean.Name) (ext : Strin
           env := ← getAugmentedEnv
         }
 
-/-- A facet to extract the blueprint for a library. -/
+/-- A facet to extract the blueprint for a library (with syntax highlighting). -/
 library_facet blueprint (lib : LeanLib) : Unit := do
   buildLibraryBlueprint lib `blueprint "tex" #[]
+
+/-- A facet to extract the blueprint for a library (without syntax highlighting). -/
+library_facet blueprintPlain (lib : LeanLib) : Unit := do
+  buildLibraryBlueprint lib `blueprintPlain "tex" #[]
 
 /-- A facet to extract the JSON data for the blueprint for a library. -/
 library_facet blueprintJson (lib : LeanLib) : Unit := do
   buildLibraryBlueprint lib `blueprintJson "json" #["--json"]
 
-/-- A facet to extract the blueprint for each library in a package. -/
+/-- A facet to extract the blueprint for each library in a package (with syntax highlighting). -/
 package_facet blueprint (pkg : Package) : Unit := do
   let libJobs := Job.collectArray <| ← pkg.leanLibs.mapM (fetch <| ·.facet `blueprint)
+  let _ ← libJobs.await
+  return .nil
+
+/-- A facet to extract the blueprint for each library in a package (without syntax highlighting). -/
+package_facet blueprintPlain (pkg : Package) : Unit := do
+  let libJobs := Job.collectArray <| ← pkg.leanLibs.mapM (fetch <| ·.facet `blueprintPlain)
   let _ ← libJobs.await
   return .nil
 
