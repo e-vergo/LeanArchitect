@@ -115,47 +115,49 @@ def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.High
 /--
 Compute SubVerso highlighting for source code at a given range in a file.
 This re-elaborates the source with proper info tree context.
+Returns `none` if highlighting fails for any reason.
 -/
 def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
     (env : Environment) (opts : Options := {}) : IO (Option SubVerso.Highlighting.Highlighted) := do
+  -- Read the full file
+  let contents ← IO.FS.readFile file
+
+  -- Extract the relevant range (1-indexed lines, 0-indexed columns)
+  let lines := contents.splitOn "\n"
+  let startLine := range.pos.line - 1  -- Convert to 0-indexed
+  let endLine := range.endPos.line - 1
+
+  if startLine >= lines.length || endLine >= lines.length then
+    return none
+
+  -- Extract lines in range
+  let mut extractedLines : Array String := #[]
+  for i in [startLine:endLine + 1] do
+    if h : i < lines.length then
+      let line := lines[i]
+      if i == startLine && i == endLine then
+        -- Single line: extract substring
+        extractedLines := extractedLines.push ((line.drop range.pos.column).take (range.endPos.column - range.pos.column)).toString
+      else if i == startLine then
+        -- First line: from column to end
+        extractedLines := extractedLines.push (line.drop range.pos.column).toString
+      else if i == endLine then
+        -- Last line: from start to column
+        extractedLines := extractedLines.push (line.take range.endPos.column).toString
+      else
+        -- Middle lines: full line
+        extractedLines := extractedLines.push line
+
+  let source := "\n".intercalate extractedLines.toList
+
+  -- Try highlighting with graceful fallback
+  -- Note: Some declarations may cause SubVerso to panic on certain info tree patterns.
+  -- In such cases, we return none and the caller should fall back to plain text.
   try
-    -- Read the full file
-    let contents ← IO.FS.readFile file
-
-    -- Extract the relevant range (1-indexed lines, 0-indexed columns)
-    let lines := contents.splitOn "\n"
-    let startLine := range.pos.line - 1  -- Convert to 0-indexed
-    let endLine := range.endPos.line - 1
-
-    if startLine >= lines.length || endLine >= lines.length then
-      return none
-
-    -- Extract lines in range
-    let mut extractedLines : Array String := #[]
-    for i in [startLine:endLine + 1] do
-      if h : i < lines.length then
-        let line := lines[i]
-        if i == startLine && i == endLine then
-          -- Single line: extract substring
-          extractedLines := extractedLines.push ((line.drop range.pos.column).take (range.endPos.column - range.pos.column)).toString
-        else if i == startLine then
-          -- First line: from column to end
-          extractedLines := extractedLines.push (line.drop range.pos.column).toString
-        else if i == endLine then
-          -- Last line: from start to column
-          extractedLines := extractedLines.push (line.take range.endPos.column).toString
-        else
-          -- Middle lines: full line
-          extractedLines := extractedLines.push line
-
-    let source := "\n".intercalate extractedLines.toList
-
-    -- We need to create a self-contained file for highlighting.
-    -- For now, just highlight the raw source without re-elaboration.
-    -- Full re-elaboration would require reconstructing imports.
     let (hl, _) ← highlightSource source env opts file.toString
     return some hl
-  catch _ =>
+  catch e =>
+    IO.eprintln s!"Warning: Highlighting failed for {file}: {e}"
     return none
 
 open SubVerso.Highlighting in

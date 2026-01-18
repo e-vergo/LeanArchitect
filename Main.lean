@@ -23,13 +23,26 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let options : LeanOptions ← match p.flag? "options" with
     | some o => IO.ofExcept (Json.parse (o.as! String) >>= fromJson?)
     | none => pure (∅ : LeanOptions)
-  if isJson then
-    let json ← jsonOfImportModule module options.toOptions computeHighlight
-    outputJsonResults baseDir module json
+
+  -- Helper to run extraction, with fallback to no highlighting on failure
+  let runWithFallback (doHighlight : Bool) : IO UInt32 := do
+    if isJson then
+      let json ← jsonOfImportModule module options.toOptions doHighlight
+      outputJsonResults baseDir module json
+    else
+      let latexOutput ← latexOutputOfImportModule module options.toOptions doHighlight
+      discard <| outputLatexResults baseDir module latexOutput
+    return 0
+
+  -- Try with highlighting if requested; fall back to no highlighting on error
+  if computeHighlight then
+    try
+      runWithFallback true
+    catch e =>
+      IO.eprintln s!"Warning: Highlighting failed for {module}, retrying without highlighting: {e}"
+      runWithFallback false
   else
-    let latexOutput ← latexOutputOfImportModule module options.toOptions computeHighlight
-    discard <| outputLatexResults baseDir module latexOutput
-  return 0
+    runWithFallback false
 
 def runIndexCmd (p : Parsed) : IO UInt32 := do
   let buildDir := match p.flag? "build" with
