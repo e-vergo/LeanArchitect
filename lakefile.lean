@@ -46,7 +46,9 @@ module_facet highlighted (mod : Module) : FilePath := do
   let modJob ← mod.olean.fetch
 
   let buildDir := ws.root.buildDir
-  let hlFile := mod.filePath (buildDir / "highlighted") "json"
+  -- Use full module name path to match Hook.lean's getHighlightingOutputPath
+  let hlFile := mod.name.components.foldl (init := buildDir / "highlighted")
+    fun path component => path / component.toString |>.withExtension "json"
 
   modJob.mapM fun _oleanFile => do
     -- Check if JSON was written during elaboration (by Hook.lean)
