@@ -58,21 +58,20 @@ def buildModuleBlueprintSafe (mod : Module) (ext : String) : FetchM (Job Unit) :
       buildFileUnlessUpToDate' mainFile do
         let env ← getAugmentedEnv
         let baseArgs := #["single", "--build", buildDir.toString, "--options", leanOptions, mod.name.toString]
-        -- Try with highlighting first
-        let highlightResult ← IO.Process.output {
-          cmd := exeFile.toString
-          args := baseArgs ++ #["--highlight"]
-          env := env
-        }
-        if highlightResult.exitCode = 0 then
-          return  -- Success with highlighting
-        -- Highlighting failed, retry without
-        logWarning s!"SubVerso highlighting failed for {mod.name}, falling back to plain"
-        proc {
-          cmd := exeFile.toString
-          args := baseArgs
-          env := env
-        }
+        -- Try with highlighting first, fall back to plain on any error
+        try
+          proc {
+            cmd := exeFile.toString
+            args := baseArgs ++ #["--highlight"]
+            env := env
+          }
+        catch _ =>
+          logWarning s!"SubVerso highlighting failed for {mod.name}, falling back to plain"
+          proc {
+            cmd := exeFile.toString
+            args := baseArgs
+            env := env
+          }
 
 /-- A facet to extract the blueprint for a module (with syntax highlighting). -/
 module_facet blueprint (mod : Module) : Unit := do
