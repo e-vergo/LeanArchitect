@@ -148,13 +148,13 @@ def mkMinimalSource (imports : Array Name) (declText : String) : String :=
   let importLines := imports.map (fun n => s!"import {n}") |>.toList |> "\n".intercalate
   s!"{importLines}\n\n{declText}"
 
-/-! ## Highlighted Code Extension
+/-! ## Environment Extension for Storing Highlighted Code
 
-This extension stores SubVerso highlighted code for declarations tagged with `@[blueprint]`.
-The highlighted code is captured during command elaboration when info trees are available.
+The hook mechanism captures highlighting during elaboration and stores it here.
 -/
 
-/-- Environment extension that stores highlighted code for blueprint declarations. -/
+/-- Environment extension that stores highlighted code for blueprint declarations.
+    This is populated by the Hook mechanism during command elaboration. -/
 initialize highlightedCodeExt : NameMapExtension SubVerso.Highlighting.Highlighted ←
   registerNameMapExtension SubVerso.Highlighting.Highlighted
 
