@@ -31,13 +31,13 @@ def runEnvOfImports (imports : Array Name) (options : Options) (x : CoreM α) : 
   Prod.fst <$> x.toIO config { env }
 
 /-- Outputs the blueprint of a module.
-If `computeHighlight` is true, SubVerso highlighting will be computed. -/
-def latexOutputOfImportModule (module : Name) (options : Options) (computeHighlight : Bool := false) : IO LatexOutput :=
-  runEnvOfImports #[module] options (moduleToLatexOutput module computeHighlight)
+    Highlighted code is captured during elaboration via the Hook mechanism. -/
+def latexOutputOfImportModule (module : Name) (options : Options) : IO LatexOutput :=
+  runEnvOfImports #[module] options (moduleToLatexOutput module)
 
 /-- Outputs the JSON data for the blueprint of a module.
-If `computeHighlight` is true, SubVerso highlighting will be computed. -/
-def jsonOfImportModule (module : Name) (options : Options) (computeHighlight : Bool := false) : IO Json :=
-  runEnvOfImports #[module] options (moduleToJson module computeHighlight)
+    Highlighted code is captured during elaboration via the Hook mechanism. -/
+def jsonOfImportModule (module : Name) (options : Options) : IO Json :=
+  runEnvOfImports #[module] options (moduleToJson module)
 
 end Architect
