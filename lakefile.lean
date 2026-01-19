@@ -46,6 +46,34 @@ def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array Stri
           env := ← getAugmentedEnv
         }
 
+/-- Build module blueprint with highlighting, falling back to plain on crash. -/
+def buildModuleBlueprintSafe (mod : Module) (ext : String) : FetchM (Job Unit) := do
+  let exeJob ← extract_blueprint.fetch
+  let modJob ← mod.leanArts.fetch
+  let buildDir := (← getRootPackage).buildDir
+  let mainFile := mod.filePath (buildDir / "blueprint" / "module") ext
+  let leanOptions := Lean.toJson mod.leanOptions |>.compress
+  exeJob.bindM fun exeFile => do
+    modJob.mapM fun _ => do
+      buildFileUnlessUpToDate' mainFile do
+        let env ← getAugmentedEnv
+        let baseArgs := #["single", "--build", buildDir.toString, "--options", leanOptions, mod.name.toString]
+        -- Try with highlighting first
+        let highlightResult ← IO.Process.output {
+          cmd := exeFile.toString
+          args := baseArgs ++ #["--highlight"]
+          env := env
+        }
+        if highlightResult.exitCode = 0 then
+          return  -- Success with highlighting
+        -- Highlighting failed, retry without
+        logWarning s!"SubVerso highlighting failed for {mod.name}, falling back to plain"
+        proc {
+          cmd := exeFile.toString
+          args := baseArgs
+          env := env
+        }
+
 /-- A facet to extract the blueprint for a module (with syntax highlighting). -/
 module_facet blueprint (mod : Module) : Unit := do
   buildModuleBlueprint mod "tex" #["--highlight"]
@@ -58,6 +86,10 @@ module_facet blueprintPlain (mod : Module) : Unit := do
 /-- A facet to extract JSON data of blueprint for a module. -/
 module_facet blueprintJson (mod : Module) : Unit := do
   buildModuleBlueprint mod "json" #["--json"]
+
+/-- A facet to extract the blueprint for a module with highlighting, falling back to plain on crash. -/
+module_facet blueprintSafe (mod : Module) : Unit := do
+  buildModuleBlueprintSafe mod "tex"
 
 def buildLibraryBlueprint (lib : LeanLib) (moduleFacet : Lean.Name) (ext : String) (extractArgs : Array String) : FetchM (Job Unit) := do
   let mods ← (← lib.modules.fetch).await
@@ -87,6 +119,10 @@ library_facet blueprintPlain (lib : LeanLib) : Unit := do
 library_facet blueprintJson (lib : LeanLib) : Unit := do
   buildLibraryBlueprint lib `blueprintJson "json" #["--json"]
 
+/-- A facet to extract the blueprint for a library with highlighting, falling back to plain per-module. -/
+library_facet blueprintSafe (lib : LeanLib) : Unit := do
+  buildLibraryBlueprint lib `blueprintSafe "tex" #[]
+
 /-- A facet to extract the blueprint for each library in a package (with syntax highlighting). -/
 package_facet blueprint (pkg : Package) : Unit := do
   let libJobs := Job.collectArray <| ← pkg.leanLibs.mapM (fetch <| ·.facet `blueprint)
@@ -102,6 +138,12 @@ package_facet blueprintPlain (pkg : Package) : Unit := do
 /-- A facet to extract the blueprint JSON data for each library in a package. -/
 package_facet blueprintJson (pkg : Package) : Unit := do
   let libJobs := Job.collectArray <| ← pkg.leanLibs.mapM (fetch <| ·.facet `blueprintJson)
+  let _ ← libJobs.await
+  return .nil
+
+/-- A facet to extract the blueprint for each library with highlighting, falling back to plain per-module. -/
+package_facet blueprintSafe (pkg : Package) : Unit := do
+  let libJobs := Job.collectArray <| ← pkg.leanLibs.mapM (fetch <| ·.facet `blueprintSafe)
   let _ ← libJobs.await
   return .nil
 
