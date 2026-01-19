@@ -19,17 +19,17 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let baseDir := outputBaseDir buildDir
   let module := p.positionalArg! "module" |>.as! String |>.toName
   let isJson := p.hasFlag "json"
-  -- Note: --highlight flag is kept for backward compatibility but is now a no-op.
-  -- Highlighting is now extracted via subverso-extract-mod at extraction time.
+  -- Get path to pre-computed highlighted JSON from Lake facet (if provided)
+  let highlightedJsonPath := p.flag? "highlightedJson" |>.map (·.as! String)
   let options : LeanOptions ← match p.flag? "options" with
     | some o => IO.ofExcept (Json.parse (o.as! String) >>= fromJson?)
     | none => pure (∅ : LeanOptions)
 
   if isJson then
-    let json ← jsonOfImportModule module options.toOptions
+    let json ← jsonOfImportModule module options.toOptions highlightedJsonPath
     outputJsonResults baseDir module json
   else
-    let latexOutput ← latexOutputOfImportModule module options.toOptions
+    let latexOutput ← latexOutputOfImportModule module options.toOptions highlightedJsonPath
     discard <| outputLatexResults baseDir module latexOutput
   return 0
 
@@ -53,9 +53,10 @@ def singleCmd := `[Cli|
 
   FLAGS:
     j, json; "Output JSON instead of LaTeX."
-    h, highlight; "No-op (kept for backward compatibility). Highlighting is now captured automatically during elaboration."
+    h, highlight; "No-op (kept for backward compatibility)."
     b, build : String; "Build directory."
     o, options : String; "LeanOptions in JSON to pass to running the module."
+    highlightedJson : String; "Path to pre-computed highlighted JSON from Lake facet."
 
   ARGS:
     module : String; "The module to extract the blueprint for."

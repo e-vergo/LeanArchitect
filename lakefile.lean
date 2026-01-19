@@ -30,52 +30,76 @@ require Cli from git
 require subverso from git
   "https://github.com/leanprover/subverso"
 
+/-- Facet that extracts highlighted JSON for a module using subverso-extract-mod.
+    Cached by Lake - only rebuilds when module's olean changes. -/
+module_facet highlighted (mod : Module) : FilePath := do
+  let ws ← getWorkspace
+  let some extract ← findLeanExe? `«subverso-extract-mod»
+    | error "subverso-extract-mod executable not found"
+
+  let exeJob ← extract.exe.fetch
+  let modJob ← mod.olean.fetch
+
+  let buildDir := ws.root.buildDir
+  let hlFile := mod.filePath (buildDir / "highlighted") "json"
+
+  exeJob.bindM fun exeFile => do
+    modJob.mapM fun _oleanFile => do
+      buildFileUnlessUpToDate' hlFile do
+        IO.FS.createDirAll (buildDir / "highlighted")
+        proc {
+          cmd := exeFile.toString
+          args := #[mod.name.toString, hlFile.toString]
+          env := ← getAugmentedEnv
+        }
+      pure hlFile
+
 def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array String) : FetchM (Job Unit) := do
   let exeJob ← extract_blueprint.fetch
   let modJob ← mod.leanArts.fetch
+  let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
   let buildDir := (← getRootPackage).buildDir
   let mainFile := mod.filePath (buildDir / "blueprint" / "module") ext
   let leanOptions := Lean.toJson mod.leanOptions |>.compress
   exeJob.bindM fun exeFile => do
-    modJob.mapM fun _ => do
-      -- The output is a main file plus a list of auxiliary files
-      buildFileUnlessUpToDate' mainFile do
-        proc {
-          cmd := exeFile.toString
-          args := #["single", "--build", buildDir.toString, "--options", leanOptions, mod.name.toString] ++ extractArgs
-          env := ← getAugmentedEnv
-        }
+    hlJob.bindM fun hlFile => do  -- Thread through highlighted JSON path
+      modJob.mapM fun _ => do
+        -- The output is a main file plus a list of auxiliary files
+        buildFileUnlessUpToDate' mainFile do
+          proc {
+            cmd := exeFile.toString
+            args := #["single", "--build", buildDir.toString,
+                      "--highlighted-json", hlFile.toString,
+                      "--options", leanOptions, mod.name.toString] ++ extractArgs
+            env := ← getAugmentedEnv
+          }
 
 /-- Build module blueprint with highlighting, falling back to plain on crash. -/
 def buildModuleBlueprintSafe (mod : Module) (ext : String) : FetchM (Job Unit) := do
   let exeJob ← extract_blueprint.fetch
   let modJob ← mod.leanArts.fetch
+  let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
   let buildDir := (← getRootPackage).buildDir
   let mainFile := mod.filePath (buildDir / "blueprint" / "module") ext
   let leanOptions := Lean.toJson mod.leanOptions |>.compress
   exeJob.bindM fun exeFile => do
-    modJob.mapM fun _ => do
-      buildFileUnlessUpToDate' mainFile do
-        let env ← getAugmentedEnv
-        let baseArgs := #["single", "--build", buildDir.toString, "--options", leanOptions, mod.name.toString]
-        -- Try with highlighting first, fall back to plain on any error
-        try
-          proc {
-            cmd := exeFile.toString
-            args := baseArgs ++ #["--highlight"]
-            env := env
-          }
-        catch _ =>
-          logWarning s!"SubVerso highlighting failed for {mod.name}, falling back to plain"
+    hlJob.bindM fun hlFile => do
+      modJob.mapM fun _ => do
+        buildFileUnlessUpToDate' mainFile do
+          let env ← getAugmentedEnv
+          let baseArgs := #["single", "--build", buildDir.toString,
+                            "--highlighted-json", hlFile.toString,
+                            "--options", leanOptions, mod.name.toString]
+          -- Highlighting is now pre-computed via facet, just run extraction
           proc {
             cmd := exeFile.toString
             args := baseArgs
             env := env
           }
 
-/-- A facet to extract the blueprint for a module (with syntax highlighting). -/
+/-- A facet to extract the blueprint for a module (with syntax highlighting via cached facet). -/
 module_facet blueprint (mod : Module) : Unit := do
-  buildModuleBlueprint mod "tex" #["--highlight"]
+  buildModuleBlueprint mod "tex" #[]
 
 /-- A facet to extract the blueprint for a module (without syntax highlighting).
     Use this if SubVerso highlighting causes panics on certain code patterns. -/

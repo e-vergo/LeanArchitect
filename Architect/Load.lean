@@ -32,19 +32,23 @@ def runEnvOfImports (imports : Array Name) (options : Options) (x : CoreM α) : 
   Prod.fst <$> x.toIO config { env }
 
 /-- Outputs the blueprint of a module.
-    Highlighted code is obtained via subverso-extract-mod, with fallback to
-    the Hook mechanism during elaboration. -/
-def latexOutputOfImportModule (module : Name) (options : Options) : IO LatexOutput := do
-  -- Extract highlighting map using subverso-extract-mod (returns empty map on failure)
-  let highlightingMap ← SubVersoExtract.extractHighlightingMap module
+    If `highlightedJsonPath?` is provided, loads cached highlighting from the Lake facet.
+    Otherwise falls back to calling subverso-extract-mod directly (slower). -/
+def latexOutputOfImportModule (module : Name) (options : Options)
+    (highlightedJsonPath? : Option String := none) : IO LatexOutput := do
+  let highlightingMap ← match highlightedJsonPath? with
+    | some path => SubVersoExtract.loadHighlightingFromFile path
+    | none => SubVersoExtract.extractHighlightingMap module
   runEnvOfImports #[module] options (moduleToLatexOutput module highlightingMap)
 
 /-- Outputs the JSON data for the blueprint of a module.
-    Highlighted code is obtained via subverso-extract-mod, with fallback to
-    the Hook mechanism during elaboration. -/
-def jsonOfImportModule (module : Name) (options : Options) : IO Json := do
-  -- Extract highlighting map using subverso-extract-mod (returns empty map on failure)
-  let highlightingMap ← SubVersoExtract.extractHighlightingMap module
+    If `highlightedJsonPath?` is provided, loads cached highlighting from the Lake facet.
+    Otherwise falls back to calling subverso-extract-mod directly (slower). -/
+def jsonOfImportModule (module : Name) (options : Options)
+    (highlightedJsonPath? : Option String := none) : IO Json := do
+  let highlightingMap ← match highlightedJsonPath? with
+    | some path => SubVersoExtract.loadHighlightingFromFile path
+    | none => SubVersoExtract.extractHighlightingMap module
   runEnvOfImports #[module] options (moduleToJson module highlightingMap)
 
 end Architect

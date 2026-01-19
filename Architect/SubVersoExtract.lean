@@ -116,6 +116,22 @@ def buildHighlightingMap (items : Array ModuleItem) : NameMap Highlighted :=
     item.defines.foldl (init := acc) fun acc' name =>
       acc'.insert name item.code
 
+/-- Load highlighting from a pre-computed JSON file (from Lake facet cache).
+    This is the fast path when the `highlighted` facet has already been run. -/
+def loadHighlightingFromFile (path : String) : IO (NameMap Highlighted) := do
+  let contents ← IO.FS.readFile path
+  match Json.parse contents with
+  | .error e =>
+    IO.eprintln s!"Warning: Failed to parse highlighted JSON from {path}: {e}"
+    return {}
+  | .ok json =>
+    match Module.fromJson? json with
+    | .error e =>
+      IO.eprintln s!"Warning: Failed to parse Module from JSON: {e}"
+      return {}
+    | .ok mod =>
+      return buildHighlightingMap mod.items
+
 /-- Extract module highlighting and build a NameMap in one step.
     This is the main entry point for getting highlighted code for a module's declarations.
 
