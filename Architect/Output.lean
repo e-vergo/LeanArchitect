@@ -284,15 +284,15 @@ private def moduleToLatexOutputAux (module : Name) (contents : Array BlueprintCo
   return { header, artifacts }
 
 /-- Convert imported module to LaTeX (header file, artifact files).
-If `computeHighlight` is true, SubVerso highlighting will be computed. -/
-def moduleToLatexOutput (module : Name) (computeHighlight : Bool := false) : CoreM LatexOutput := do
-  let contents ← getBlueprintContents module computeHighlight
+    Highlighted code is captured during elaboration via the Hook mechanism. -/
+def moduleToLatexOutput (module : Name) : CoreM LatexOutput := do
+  let contents ← getBlueprintContents module
   moduleToLatexOutputAux module contents
 
 /-- Convert current module to LaTeX (header file, artifact files).
-If `computeHighlight` is true, SubVerso highlighting will be computed. -/
-def mainModuleToLatexOutput (computeHighlight : Bool := false) : CoreM LatexOutput := do
-  let contents ← getMainModuleBlueprintContents computeHighlight
+    Highlighted code is captured during elaboration via the Hook mechanism. -/
+def mainModuleToLatexOutput : CoreM LatexOutput := do
+  let contents ← getMainModuleBlueprintContents
   moduleToLatexOutputAux (← getMainModule) contents
 
 /-- Shows the blueprint LaTeX of the current module (`#show_blueprint`) or
@@ -355,13 +355,13 @@ def BlueprintContent.toJson : BlueprintContent → Json
   | .node n => json% {"type": "node", "data": $(n.toJson)}
   | .modDoc d => json% {"type": "moduleDoc", "data": $(d.doc)}
 
-def moduleToJson (module : Name) (computeHighlight : Bool := false) : CoreM Json := do
+def moduleToJson (module : Name) : CoreM Json := do
   return Json.arr <|
-    (← getBlueprintContents module computeHighlight).map BlueprintContent.toJson
+    (← getBlueprintContents module).map BlueprintContent.toJson
 
-def mainModuleToJson (computeHighlight : Bool := false) : CoreM Json := do
+def mainModuleToJson : CoreM Json := do
   return Json.arr <|
-    (← getMainModuleBlueprintContents computeHighlight).map BlueprintContent.toJson
+    (← getMainModuleBlueprintContents).map BlueprintContent.toJson
 
 /-- Shows the blueprint JSON of the current module (`#show_blueprint_json`) or
 a single Lean declaration (`#show_blueprint_json name`). -/

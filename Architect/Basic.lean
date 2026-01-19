@@ -94,99 +94,6 @@ def addLeanNameOfLatexLabel (env : Environment) (latexLabel : String) (name : Na
 def getLeanNamesOfLatexLabel (env : Environment) (latexLabel : String) : Array Name :=
   latexLabelToLeanNamesExt.getState env |>.findD latexLabel #[]
 
-/-! ## Highlighted Code Extension
-
-This extension stores SubVerso highlighted code for declarations tagged with `@[blueprint]`.
-The highlighted code is captured during command elaboration when info trees are available.
--/
-
-/-- Environment extension that stores highlighted code for blueprint declarations. -/
-initialize highlightedCodeExt : NameMapExtension SubVerso.Highlighting.Highlighted ←
-  registerNameMapExtension SubVerso.Highlighting.Highlighted
-
-/-- Add highlighted code for a declaration to the environment. -/
-def addHighlightedCode (name : Name) (hl : SubVerso.Highlighting.Highlighted) : CoreM Unit :=
-  modifyEnv fun env => highlightedCodeExt.addEntry env (name, hl)
-
-/-- Get highlighted code for a declaration from the environment. -/
-def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.Highlighting.Highlighted :=
-  highlightedCodeExt.find? env name
-
-/--
-Extract the import block from a Lean source file.
-Returns lines from start of file up to and including the last import statement.
--/
-def extractImports (contents : String) : String := Id.run do
-  let lines := contents.splitOn "\n"
-  let mut lastImportLine : Nat := 0
-  for i in [:lines.length] do
-    let line := lines[i]!.trimAsciiStart.toString
-    -- Check for import, open, or set_option at file level (before declarations)
-    if line.startsWith "import " || line.startsWith "open " || line.startsWith "set_option " then
-      lastImportLine := i + 1
-    -- Stop at first declaration keyword (def, theorem, lemma, etc.)
-    else if line.startsWith "def " || line.startsWith "theorem " || line.startsWith "lemma " ||
-            line.startsWith "structure " || line.startsWith "class " || line.startsWith "instance " ||
-            line.startsWith "inductive " || line.startsWith "abbrev " || line.startsWith "@[" ||
-            line.startsWith "namespace " || line.startsWith "section " ||
-            line.startsWith "variable " || line.startsWith "/-" then
-      break
-  -- Include lines 0 to lastImportLine
-  let importLines := lines.toArray[:lastImportLine].toArray.toList
-  "\n".intercalate importLines
-
-/--
-Compute SubVerso highlighting for source code at a given range in a file.
-This re-elaborates the source with proper info tree context.
-Returns `none` if highlighting fails for any reason.
--/
-def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
-    (env : Environment) (opts : Options := {}) : IO (Option SubVerso.Highlighting.Highlighted) := do
-  -- Read the full file
-  let contents ← IO.FS.readFile file
-
-  -- Extract the relevant range (1-indexed lines, 0-indexed columns)
-  let lines := contents.splitOn "\n"
-  let startLine := range.pos.line - 1  -- Convert to 0-indexed
-  let endLine := range.endPos.line - 1
-
-  if startLine >= lines.length || endLine >= lines.length then
-    return none
-
-  -- Extract lines in range (the declaration)
-  let mut extractedLines : Array String := #[]
-  for i in [startLine:endLine + 1] do
-    if h : i < lines.length then
-      let line := lines[i]
-      if i == startLine && i == endLine then
-        -- Single line: extract substring
-        extractedLines := extractedLines.push ((line.drop range.pos.column).take (range.endPos.column - range.pos.column)).toString
-      else if i == startLine then
-        -- First line: from column to end
-        extractedLines := extractedLines.push (line.drop range.pos.column).toString
-      else if i == endLine then
-        -- Last line: from start to column
-        extractedLines := extractedLines.push (line.take range.endPos.column).toString
-      else
-        -- Middle lines: full line
-        extractedLines := extractedLines.push line
-
-  let declSource := "\n".intercalate extractedLines.toList
-
-  -- Extract imports from file header and prepend to declaration
-  -- This allows name resolution during re-elaboration
-  let imports := extractImports contents
-  let source := if imports.isEmpty then declSource else imports ++ "\n\n" ++ declSource
-
-  -- Try highlighting with graceful fallback
-  -- Note: Some declarations may cause SubVerso to panic on certain info tree patterns.
-  -- In such cases, we return none and the caller should fall back to plain text.
-  try
-    let (hl, _) ← highlightSource source env opts file.toString
-    return some hl
-  catch e =>
-    IO.eprintln s!"Warning: Highlighting failed for {file}: {e}"
-    return none
 
 open SubVerso.Highlighting in
 /-- Split highlighted code at the definition's `:=` token.
@@ -293,8 +200,9 @@ def splitAtDefinitionAssign (hl : Highlighted) (splitAtAssign : Bool := true)
           body := body ++ node
       return (signature, if body.isEmpty then none else some body)
 
-/-- Convert a Node to NodeWithPos, looking up position and highlighted code information. -/
-def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM NodeWithPos := do
+/-- Convert a Node to NodeWithPos, looking up position and highlighted code information.
+    Highlighted code should be captured during elaboration via the Hook mechanism. -/
+def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
   let env ← getEnv
   if !env.contains node.name then
     return { node with hasLean := false, location := none, proofLocation := none, file := none }
@@ -329,11 +237,8 @@ def Node.toNodeWithPos (node : Node) (computeHighlight : Bool := false) : CoreM 
 
   let file ← (← getSrcSearchPath).findWithExt "lean" module
 
-  -- Get or compute full highlighted code
-  let mut highlightedCode := getHighlightedCode? env node.name
-  if highlightedCode.isNone && computeHighlight then
-    if let (some f, some r) := (file, ranges) then
-      highlightedCode ← computeHighlighting f r.range env (← getOptions)
+  -- Get highlighted code captured during elaboration
+  let highlightedCode := getHighlightedCode? env node.name
 
   -- Split highlighted code at the definition's := using bracket-aware parsing
   -- Always strip @[blueprint ...] prefix; only split at := if there's a proof

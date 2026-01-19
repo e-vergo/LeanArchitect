@@ -3,6 +3,7 @@ Copyright (c) 2025 LeanArchitect contributors. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
 import Lean
+import Batteries.Lean.NameMapAttribute
 import SubVerso.Highlighting
 
 /-!
@@ -146,5 +147,44 @@ Creates a minimal source file that imports necessary modules and contains the de
 def mkMinimalSource (imports : Array Name) (declText : String) : String :=
   let importLines := imports.map (fun n => s!"import {n}") |>.toList |> "\n".intercalate
   s!"{importLines}\n\n{declText}"
+
+/-! ## Highlighted Code Extension
+
+This extension stores SubVerso highlighted code for declarations tagged with `@[blueprint]`.
+The highlighted code is captured during command elaboration when info trees are available.
+-/
+
+/-- Environment extension that stores highlighted code for blueprint declarations. -/
+initialize highlightedCodeExt : NameMapExtension SubVerso.Highlighting.Highlighted ←
+  registerNameMapExtension SubVerso.Highlighting.Highlighted
+
+/-- Add highlighted code for a declaration to the environment. -/
+def addHighlightedCode (name : Name) (hl : SubVerso.Highlighting.Highlighted) : CoreM Unit :=
+  modifyEnv fun env => highlightedCodeExt.addEntry env (name, hl)
+
+/-- Get highlighted code for a declaration from the environment. -/
+def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.Highlighting.Highlighted :=
+  highlightedCodeExt.find? env name
+
+/-- Capture highlighting for a declaration using current command state's info trees.
+    Must be called from CommandElabM while info trees are still available.
+
+    This is the preferred method for capturing highlighting because it uses the
+    already-available info trees from elaboration, avoiding position mismatches
+    that occur when re-elaborating source code later. -/
+def captureHighlightingFromCommandState (name : Name) (stx : Syntax) : CommandElabM Unit := do
+  try
+    let trees := (← get).infoState.trees
+    let messages := (← get).messages.toArray.filter (!·.isSilent)
+    let suppressedNS : List Name := []
+    trace[blueprint.debug] "Capturing highlighting for {name}: {trees.size} info trees, syntax kind: {stx.getKind}"
+    -- Run SubVerso highlighting in TermElabM context
+    let hl ← liftTermElabM <| highlightIncludingUnparsed stx messages trees suppressedNS
+    trace[blueprint.debug] "Highlighting captured for {name}: {repr hl |>.pretty.length} chars"
+    -- Store in extension
+    modifyEnv fun env => highlightedCodeExt.addEntry env (name, hl)
+  catch e =>
+    -- SubVerso can crash on some declarations; log and continue gracefully
+    logWarning m!"Failed to capture highlighting for {name}: {e.toMessageData}"
 
 end Architect
