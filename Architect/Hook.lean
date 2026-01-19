@@ -1,0 +1,270 @@
+/-
+Copyright (c) 2025 LeanArchitect contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+-/
+import Lean
+import Batteries.Lean.NameMapAttribute
+import SubVerso.Highlighting
+import SubVerso.Module
+import Architect.Highlighting
+
+/-!
+# Elaboration-Time Highlighting Capture Infrastructure
+
+This module provides the core infrastructure for capturing SubVerso syntax highlighting
+DURING Lean elaboration. Info trees (required for semantic highlighting) are ephemeral -
+they exist in `commandState.infoState.trees` during elaboration but are discarded afterward.
+This module captures highlighting while these trees are available.
+
+## Key Components
+
+1. **Environment extension** (`highlightedDeclExt`): Stores captured highlighting per declaration
+2. **Core capture function** (`captureHighlightingFromInfoTrees`): Calls SubVerso's highlight function
+3. **JSON serialization** (`serializeHighlightedToJson`, `writeHighlightingJson`): Export to JSON files
+4. **Module finalization hook**: Writes accumulated highlighting when module compilation completes
+
+## Usage
+
+The `@[blueprint]` attribute handler calls `captureHighlighting` after registering a node.
+When the module finishes compilation, all captured highlighting is exported to
+`.lake/build/highlighted/{Module/Path}.json`.
+-/
+
+open Lean Elab Command Term Meta
+open SubVerso.Highlighting
+open SubVerso.Module
+
+namespace Architect
+
+/-! ## Environment Extension for Captured Highlighting -/
+
+/-- Environment extension storing captured highlighting for blueprint declarations.
+    Keyed by declaration name, stores the Highlighted value captured during elaboration. -/
+initialize highlightedDeclExt : NameMapExtension Highlighted ←
+  registerNameMapExtension Highlighted
+
+/-- Get all captured highlighting for the current environment. -/
+def getModuleHighlighting (env : Environment) : NameMap Highlighted :=
+  highlightedDeclExt.getState env
+
+/-- Add captured highlighting for a declaration to the environment. -/
+def addHighlighting (env : Environment) (declName : Name) (hl : Highlighted) : Environment :=
+  highlightedDeclExt.addEntry env (declName, hl)
+
+/-! ## Core Capture Function -/
+
+/-- Capture SubVerso highlighting from info trees for a given syntax.
+
+    This function:
+    1. Takes the syntax, messages, and info trees from the current command state
+    2. Calls SubVerso's `highlightIncludingUnparsed` function
+    3. Returns the highlighted result or `none` on failure
+
+    Must be called DURING elaboration while info trees are still available.
+
+    Returns `none` if:
+    - Info trees are empty
+    - SubVerso highlighting fails
+-/
+def captureHighlightingFromInfoTrees
+    (stx : Syntax)
+    (messages : Array Message)
+    (trees : PersistentArray InfoTree)
+    (suppressedNamespaces : List Name := [])
+    : TermElabM (Option Highlighted) := do
+  if trees.isEmpty then
+    return none
+  try
+    let hl ← highlightIncludingUnparsed stx messages trees suppressedNamespaces
+    return some hl
+  catch _ =>
+    -- Silently fail - highlighting is an optional enhancement
+    return none
+
+/-- Capture highlighting for a declaration using current command state.
+
+    This is the main entry point for the `@[blueprint]` attribute handler.
+    It extracts info trees from the current command state and captures highlighting.
+
+    Must be called DURING elaboration while info trees are still available.
+    Silently does nothing if:
+    - Called outside elaboration context
+    - Info trees are not available
+    - SubVerso highlighting fails
+-/
+def captureHighlighting (declName : Name) (stx : Syntax) : CommandElabM Unit := do
+  -- Check if highlighting is enabled
+  unless blueprint.highlighting.get (← getOptions) do return
+
+  try
+    -- Get current info trees from command state
+    let trees := (← get).infoState.trees
+    if trees.isEmpty then
+      trace[blueprint.debug] "No info trees available for {declName}"
+      return
+
+    -- Get messages for this syntax range
+    let allMessages := (← get).messages.toArray
+    let fileMap := (← read).fileMap
+    let messages := allMessages.filter fun msg =>
+      !msg.isSilent &&
+      stx.getRange?.any fun _ =>
+        let msgStartPos := msg.pos
+        -- Check if message position falls within syntax range
+        match stx.getPos?, stx.getTailPos? with
+        | some startPos, some endPos =>
+          let stxStartLine := fileMap.toPosition startPos |>.line
+          let stxEndLine := fileMap.toPosition endPos |>.line
+          msgStartPos.line >= stxStartLine && msgStartPos.line <= stxEndLine
+        | _, _ => false
+
+    -- Run SubVerso highlighting in TermElabM
+    let hl? ← liftTermElabM do
+      captureHighlightingFromInfoTrees stx messages trees []
+
+    match hl? with
+    | some hl =>
+      -- Store in environment extension
+      modifyEnv fun env => addHighlighting env declName hl
+      trace[blueprint] "Captured highlighting for {declName}"
+    | none =>
+      trace[blueprint.debug] "Highlighting capture returned none for {declName}"
+  catch _ =>
+    -- Silently fail - highlighting is optional enhancement
+    trace[blueprint.debug] "Failed to capture highlighting for {declName}"
+
+/-! ## JSON Serialization Helpers -/
+
+/-- Serialize a Highlighted value to JSON using SubVerso's deduplicated export format.
+    This produces a compact JSON representation suitable for storage. -/
+def serializeHighlightedToJson (hl : Highlighted) : Json :=
+  hl.exportCode.toJson
+
+/-- Serialize a NameMap of Highlighted values to JSON in SubVerso Module format.
+    This format is compatible with `subverso-extract-mod` output. -/
+def serializeHighlightingMapToJson (highlighting : NameMap Highlighted) : Json :=
+  let items : Array ModuleItem := highlighting.toList.foldl (init := #[]) fun acc (name, hl) =>
+    acc.push {
+      range := none  -- Range info not available at capture time
+      kind := `blueprint
+      defines := #[name]
+      code := hl
+    }
+  let module : SubVerso.Module.Module := { items }
+  module.toJson
+
+/-- Get the output path for a module's highlighting JSON file.
+    Returns `.lake/build/highlighted/{Module/Path}.json` -/
+def getHighlightingOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
+  let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
+    fun path component => path / component.toString
+  modulePath.withExtension "json"
+
+/-- Write highlighted code to a JSON file atomically.
+    Uses write-to-temp-then-rename for crash safety on POSIX systems. -/
+def writeHighlightingJsonAtomic (path : System.FilePath) (json : Json) : IO Unit := do
+  -- Ensure parent directory exists
+  if let some parent := path.parent then
+    IO.FS.createDirAll parent
+
+  -- Write to temp file first
+  let tmpPath := path.withExtension "json.tmp"
+  IO.FS.writeFile tmpPath json.compress
+
+  -- Atomic rename (on POSIX systems)
+  IO.FS.rename tmpPath path
+
+/-- Write all captured highlighting for a declaration to a JSON file.
+    The file is written to `.lake/build/highlighted/{Module/Path}/{DeclName}.json`. -/
+def writeHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
+    (declName : Name) (hl : Highlighted) : IO Unit := do
+  let moduleDir := moduleName.components.foldl (init := buildDir / "highlighted")
+    fun path component => path / component.toString
+  let path := moduleDir / s!"{declName}.json"
+  writeHighlightingJsonAtomic path (serializeHighlightedToJson hl)
+
+/-- Write all captured module highlighting to a single JSON file.
+    The file is written to `.lake/build/highlighted/{Module/Path}.json`. -/
+def writeModuleHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
+    (highlighting : NameMap Highlighted) : IO Unit := do
+  if highlighting.isEmpty then return
+  let path := getHighlightingOutputPath buildDir moduleName
+  writeHighlightingJsonAtomic path (serializeHighlightingMapToJson highlighting)
+
+/-! ## Module Finalization -/
+
+/-- Export all captured highlighting for the current module to JSON.
+    Call this when module compilation completes. -/
+def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit := do
+  let env ← getEnv
+  let moduleName := env.header.mainModule
+  let highlighting := getModuleHighlighting env
+
+  if highlighting.isEmpty then
+    trace[blueprint.debug] "No highlighting to export for {moduleName}"
+    return
+
+  trace[blueprint] "Exporting {highlighting.size} highlighted declarations for {moduleName}"
+
+  try
+    writeModuleHighlightingJson buildDir moduleName highlighting
+    trace[blueprint] "Wrote highlighting JSON for {moduleName}"
+  catch _ =>
+    -- Log but don't fail compilation
+    trace[blueprint.debug] "Failed to write highlighting JSON for {moduleName}"
+
+/-! ## Export Command -/
+
+/--
+Export captured blueprint highlighting to JSON.
+
+This command exports all highlighting captured via `@[blueprint]` attributes
+in the current module to a JSON file at `.lake/build/highlighted/{Module/Path}.json`.
+
+Usage: Add this at the end of a file with `@[blueprint]` declarations:
+```
+#export_blueprint_highlighting
+```
+
+The command is a no-op if:
+- No highlighting has been captured in the current module
+- The `blueprint.highlighting` option is disabled
+-/
+syntax (name := exportBlueprintHighlighting) "#export_blueprint_highlighting" : command
+
+@[command_elab exportBlueprintHighlighting]
+def elabExportBlueprintHighlighting : CommandElab := fun _stx => do
+  -- Skip if highlighting is disabled
+  unless blueprint.highlighting.get (← getOptions) do return
+
+  -- Get build directory from Lake workspace (default to .lake/build)
+  let buildDir : System.FilePath := ".lake" / "build"
+  exportModuleHighlighting buildDir
+
+/-! ## Loading Captured Highlighting -/
+
+/-- Load highlighted code from a JSON file.
+    Returns empty map if file doesn't exist or parsing fails. -/
+def loadHighlightingFromJson (path : System.FilePath) : IO (NameMap Highlighted) := do
+  if !(← path.pathExists) then
+    return {}
+
+  let contents ← IO.FS.readFile path
+  match Json.parse contents with
+  | .error _ => return {}
+  | .ok json =>
+    match SubVerso.Module.Module.fromJson? json with
+    | .error _ => return {}
+    | .ok mod =>
+      return mod.items.foldl (init := {}) fun acc item =>
+        item.defines.foldl (init := acc) fun acc' name =>
+          acc'.insert name item.code
+
+/-- Load highlighting for a specific module from the build cache.
+    Looks for `.lake/build/highlighted/{Module/Path}.json`. -/
+def loadModuleHighlighting (buildDir : System.FilePath) (moduleName : Name)
+    : IO (NameMap Highlighted) := do
+  let path := getHighlightingOutputPath buildDir moduleName
+  loadHighlightingFromJson path
+
+end Architect

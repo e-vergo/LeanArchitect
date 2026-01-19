@@ -30,21 +30,34 @@ require Cli from git
 require subverso from git
   "https://github.com/leanprover/subverso"
 
-/-- Facet that extracts highlighted JSON for a module using subverso-extract-mod.
+/-- Facet that provides highlighted JSON for a module.
+
+    **New behavior (preferred):** If the module imports `Architect`, highlighting is captured
+    during elaboration via Hook.lean and written to `.lake/build/highlighted/{Module/Path}.json`.
+    This facet simply waits for the olean to be built and returns the JSON path.
+
+    **Fallback behavior:** If the JSON file doesn't exist after olean compilation (module doesn't
+    import Architect, or `#export_blueprint_highlighting` wasn't called), falls back to running
+    `subverso-extract-mod` to generate the highlighting.
+
     Cached by Lake - only rebuilds when module's olean changes. -/
 module_facet highlighted (mod : Module) : FilePath := do
   let ws ← getWorkspace
-  let some extract ← findLeanExe? `«subverso-extract-mod»
-    | error "subverso-extract-mod executable not found"
-
-  let exeJob ← extract.exe.fetch
   let modJob ← mod.olean.fetch
 
   let buildDir := ws.root.buildDir
   let hlFile := mod.filePath (buildDir / "highlighted") "json"
 
-  exeJob.bindM fun exeFile => do
-    modJob.mapM fun _oleanFile => do
+  modJob.mapM fun _oleanFile => do
+    -- Check if JSON was written during elaboration (by Hook.lean)
+    if ← hlFile.pathExists then
+      -- JSON exists from elaboration-time capture - use it directly
+      pure hlFile
+    else
+      -- Fallback: run subverso-extract-mod for modules that don't use Hook.lean
+      let some extract ← findLeanExe? `«subverso-extract-mod»
+        | error "subverso-extract-mod executable not found"
+      let exeFile ← extract.exe.fetch >>= (·.await)
       buildFileUnlessUpToDate' hlFile do
         IO.FS.createDirAll (buildDir / "highlighted")
         proc {

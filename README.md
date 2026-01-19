@@ -1,3 +1,8 @@
+> **Fork Notice:** This is a fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)
+> with experimental side-by-side display features.
+>
+> **Warning:** This fork is not production-ready. Use at your own risk. APIs may have breaking changes.
+
 # LeanArchitect
 
 LeanArchitect is a tool for generating the blueprint data of a Lean project directly from Lean.
@@ -9,6 +14,18 @@ Start by annotating definitions and theorems in Lean with the `@[blueprint]` tag
 
 This tool is built to complement [leanblueprint](https://github.com/PatrickMassot/leanblueprint) and its structure is inspired by [doc-gen4](https://github.com/leanprover/doc-gen4). The idea is inspired by [leanblueprint-extract](https://github.com/AlexKontorovich/PrimeNumberTheoremAnd/tree/main/leanblueprint-extract).
 
+## Side-by-Side Display (Experimental)
+
+This fork integrates with a companion leanblueprint fork for side-by-side LaTeX/Lean display in blueprint documents.
+
+**Key features:**
+
+- **Lake facet caching:** The `highlighted` facet runs `subverso-extract-mod` to extract SubVerso JSON highlighting data and caches it. The `blueprint` facet depends on `highlighted` and uses the cached data path.
+- **Signature/proof splitting:** For theorems, the code is split at the `:=` token to separate the signature from the proof body, enabling distinct display of each part.
+- **Base64-encoded output:** SubVerso JSON is base64-encoded and emitted via `\leansignaturesource{}` and `\leanproofsource{}` LaTeX commands for processing by the companion leanblueprint fork.
+
+**Requirement:** This fork requires the companion fork [e-vergo/leanblueprint](https://github.com/e-vergo/leanblueprint) to render the side-by-side display.
+
 ## Instructions
 
 First, install [leanblueprint](https://github.com/PatrickMassot/leanblueprint) and follow the instructions there to set up a blueprint project using `leanblueprint new`, if not already done. (See also instructions below for converting from an existing project.)
@@ -18,7 +35,7 @@ Add LeanArchitect to the lakefile. For example:
 ```toml
 [[require]]
 name = "LeanArchitect"
-git = "https://github.com/hanwenzhu/LeanArchitect.git"
+git = "https://github.com/e-vergo/LeanArchitect.git"
 rev = "main"
 ```
 

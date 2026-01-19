@@ -32,23 +32,31 @@ def runEnvOfImports (imports : Array Name) (options : Options) (x : CoreM α) : 
   Prod.fst <$> x.toIO config { env }
 
 /-- Outputs the blueprint of a module.
-    If `highlightedJsonPath?` is provided, loads cached highlighting from the Lake facet.
-    Otherwise falls back to calling subverso-extract-mod directly (slower). -/
+    If `highlightedJsonPath?` is provided, loads cached highlighting from that path.
+    Otherwise, tries to load from `.lake/build/highlighted/{Module/Path}.json` (Hook.lean output),
+    falling back to calling subverso-extract-mod directly (slower). -/
 def latexOutputOfImportModule (module : Name) (options : Options)
     (highlightedJsonPath? : Option String := none) : IO LatexOutput := do
   let highlightingMap ← match highlightedJsonPath? with
     | some path => SubVersoExtract.loadHighlightingFromFile path
-    | none => SubVersoExtract.extractHighlightingMap module
+    | none =>
+      -- Try to load from standard Hook.lean location, fall back to subverso-extract-mod
+      let buildDir : System.FilePath := ".lake" / "build"
+      SubVersoExtract.loadHighlightingWithFallback module buildDir
   runEnvOfImports #[module] options (moduleToLatexOutput module highlightingMap)
 
 /-- Outputs the JSON data for the blueprint of a module.
-    If `highlightedJsonPath?` is provided, loads cached highlighting from the Lake facet.
-    Otherwise falls back to calling subverso-extract-mod directly (slower). -/
+    If `highlightedJsonPath?` is provided, loads cached highlighting from that path.
+    Otherwise, tries to load from `.lake/build/highlighted/{Module/Path}.json` (Hook.lean output),
+    falling back to calling subverso-extract-mod directly (slower). -/
 def jsonOfImportModule (module : Name) (options : Options)
     (highlightedJsonPath? : Option String := none) : IO Json := do
   let highlightingMap ← match highlightedJsonPath? with
     | some path => SubVersoExtract.loadHighlightingFromFile path
-    | none => SubVersoExtract.extractHighlightingMap module
+    | none =>
+      -- Try to load from standard Hook.lean location, fall back to subverso-extract-mod
+      let buildDir : System.FilePath := ".lake" / "build"
+      SubVersoExtract.loadHighlightingWithFallback module buildDir
   runEnvOfImports #[module] options (moduleToJson module highlightingMap)
 
 end Architect

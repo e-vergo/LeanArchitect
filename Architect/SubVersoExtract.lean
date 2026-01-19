@@ -116,10 +116,15 @@ def buildHighlightingMap (items : Array ModuleItem) : NameMap Highlighted :=
     item.defines.foldl (init := acc) fun acc' name =>
       acc'.insert name item.code
 
-/-- Load highlighting from a pre-computed JSON file (from Lake facet cache).
-    This is the fast path when the `highlighted` facet has already been run. -/
+/-- Load highlighting from a pre-computed JSON file (from Lake facet cache or Hook elaboration).
+    Handles both the old `subverso-extract-mod` format and the new Hook.lean format.
+    Both formats use SubVerso.Module.Module JSON structure.
+    This is the fast path when highlighting has already been captured. -/
 def loadHighlightingFromFile (path : String) : IO (NameMap Highlighted) := do
-  let contents ← IO.FS.readFile path
+  let filePath : FilePath := path
+  if !(← filePath.pathExists) then
+    return {}
+  let contents ← IO.FS.readFile filePath
   match Json.parse contents with
   | .error e =>
     IO.eprintln s!"Warning: Failed to parse highlighted JSON from {path}: {e}"
@@ -141,6 +146,28 @@ def extractHighlightingMap (moduleName : Name) (projectRoot? : Option FilePath :
   let some items ← extractModuleHighlighting moduleName projectRoot?
     | return {}
   return buildHighlightingMap items
+
+/-- Compute the path for a module's highlighting JSON file.
+    Returns `.lake/build/highlighted/{Module/Path}.json`. -/
+def getHighlightingPath (buildDir : FilePath) (moduleName : Name) : FilePath :=
+  let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
+    fun path component => path / component.toString
+  modulePath.withExtension "json"
+
+/-- Load highlighting for a module, preferring elaboration-time capture over subverso-extract-mod.
+    1. First checks for JSON from Hook.lean (written during `lake build`)
+    2. Falls back to running `subverso-extract-mod` if no cached JSON exists
+
+    The `buildDir` should be the Lake build directory (e.g., `.lake/build`). -/
+def loadHighlightingWithFallback (moduleName : Name) (buildDir : FilePath)
+    (projectRoot? : Option FilePath := none) : IO (NameMap Highlighted) := do
+  -- Try loading from cached JSON file first (from Hook.lean elaboration-time capture)
+  let hlPath := getHighlightingPath buildDir moduleName
+  if ← hlPath.pathExists then
+    return ← loadHighlightingFromFile hlPath.toString
+
+  -- Fallback to running subverso-extract-mod
+  extractHighlightingMap moduleName projectRoot?
 
 /-- Get highlighted code for a specific declaration from a module.
     This extracts the full module and looks up the specific name. -/
