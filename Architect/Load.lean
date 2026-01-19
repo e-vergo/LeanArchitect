@@ -1,4 +1,5 @@
 import Architect.Output
+import Architect.SubVersoExtract
 
 
 namespace Architect
@@ -31,13 +32,19 @@ def runEnvOfImports (imports : Array Name) (options : Options) (x : CoreM α) : 
   Prod.fst <$> x.toIO config { env }
 
 /-- Outputs the blueprint of a module.
-    Highlighted code is captured during elaboration via the Hook mechanism. -/
-def latexOutputOfImportModule (module : Name) (options : Options) : IO LatexOutput :=
-  runEnvOfImports #[module] options (moduleToLatexOutput module)
+    Highlighted code is obtained via subverso-extract-mod, with fallback to
+    the Hook mechanism during elaboration. -/
+def latexOutputOfImportModule (module : Name) (options : Options) : IO LatexOutput := do
+  -- Extract highlighting map using subverso-extract-mod (returns empty map on failure)
+  let highlightingMap ← SubVersoExtract.extractHighlightingMap module
+  runEnvOfImports #[module] options (moduleToLatexOutput module highlightingMap)
 
 /-- Outputs the JSON data for the blueprint of a module.
-    Highlighted code is captured during elaboration via the Hook mechanism. -/
-def jsonOfImportModule (module : Name) (options : Options) : IO Json :=
-  runEnvOfImports #[module] options (moduleToJson module)
+    Highlighted code is obtained via subverso-extract-mod, with fallback to
+    the Hook mechanism during elaboration. -/
+def jsonOfImportModule (module : Name) (options : Options) : IO Json := do
+  -- Extract highlighting map using subverso-extract-mod (returns empty map on failure)
+  let highlightingMap ← SubVersoExtract.extractHighlightingMap module
+  runEnvOfImports #[module] options (moduleToJson module highlightingMap)
 
 end Architect

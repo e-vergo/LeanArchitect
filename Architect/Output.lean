@@ -284,9 +284,11 @@ private def moduleToLatexOutputAux (module : Name) (contents : Array BlueprintCo
   return { header, artifacts }
 
 /-- Convert imported module to LaTeX (header file, artifact files).
-    Highlighted code is captured during elaboration via the Hook mechanism. -/
-def moduleToLatexOutput (module : Name) : CoreM LatexOutput := do
-  let contents ← getBlueprintContents module
+    Highlighted code is obtained from the provided map (from subverso-extract-mod),
+    with fallback to the Hook mechanism during elaboration. -/
+def moduleToLatexOutput (module : Name) (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    : CoreM LatexOutput := do
+  let contents ← getBlueprintContents module highlightingMap
   moduleToLatexOutputAux module contents
 
 /-- Convert current module to LaTeX (header file, artifact files).
@@ -355,9 +357,10 @@ def BlueprintContent.toJson : BlueprintContent → Json
   | .node n => json% {"type": "node", "data": $(n.toJson)}
   | .modDoc d => json% {"type": "moduleDoc", "data": $(d.doc)}
 
-def moduleToJson (module : Name) : CoreM Json := do
+def moduleToJson (module : Name) (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    : CoreM Json := do
   return Json.arr <|
-    (← getBlueprintContents module).map BlueprintContent.toJson
+    (← getBlueprintContents module highlightingMap).map BlueprintContent.toJson
 
 def mainModuleToJson : CoreM Json := do
   return Json.arr <|

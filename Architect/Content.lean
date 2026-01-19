@@ -1,5 +1,6 @@
 import Architect.Basic
 import Architect.Command
+import SubVerso.Highlighting
 
 
 open Lean Elab
@@ -43,12 +44,15 @@ def getMainModuleBlueprintContents : CoreM (Array BlueprintContent) := do
   return (nodes ++ modDocs).qsort BlueprintContent.order
 
 /-- Get blueprint contents of an imported module.
-    Highlighted code is captured during elaboration via the Hook mechanism. -/
-def getBlueprintContents (module : Name) : CoreM (Array BlueprintContent) := do
+    Highlighted code is obtained from the provided map (from subverso-extract-mod),
+    with fallback to the Hook mechanism during elaboration. -/
+def getBlueprintContents (module : Name)
+    (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    : CoreM (Array BlueprintContent) := do
   let env ← getEnv
   let some modIdx := env.getModuleIdx? module | return #[]
   let nodes ← (blueprintExt.getModuleEntries env modIdx).mapM fun (_, node) =>
-    BlueprintContent.node <$> node.toNodeWithPos
+    BlueprintContent.node <$> node.toNodeWithPos highlightingMap
   let modDocs := (getModuleBlueprintDoc? env module).getD #[] |>.map BlueprintContent.modDoc
   return (nodes ++ modDocs).qsort BlueprintContent.order
 

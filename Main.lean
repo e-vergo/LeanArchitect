@@ -20,7 +20,7 @@ def runSingleCmd (p : Parsed) : IO UInt32 := do
   let module := p.positionalArg! "module" |>.as! String |>.toName
   let isJson := p.hasFlag "json"
   -- Note: --highlight flag is kept for backward compatibility but is now a no-op.
-  -- Highlighting is captured during elaboration via the Hook mechanism.
+  -- Highlighting is now extracted via subverso-extract-mod at extraction time.
   let options : LeanOptions ← match p.flag? "options" with
     | some o => IO.ofExcept (Json.parse (o.as! String) >>= fromJson?)
     | none => pure (∅ : LeanOptions)

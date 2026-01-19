@@ -148,43 +148,4 @@ def mkMinimalSource (imports : Array Name) (declText : String) : String :=
   let importLines := imports.map (fun n => s!"import {n}") |>.toList |> "\n".intercalate
   s!"{importLines}\n\n{declText}"
 
-/-! ## Environment Extension for Storing Highlighted Code
-
-The hook mechanism captures highlighting during elaboration and stores it here.
--/
-
-/-- Environment extension that stores highlighted code for blueprint declarations.
-    This is populated by the Hook mechanism during command elaboration. -/
-initialize highlightedCodeExt : NameMapExtension SubVerso.Highlighting.Highlighted ←
-  registerNameMapExtension SubVerso.Highlighting.Highlighted
-
-/-- Add highlighted code for a declaration to the environment. -/
-def addHighlightedCode (name : Name) (hl : SubVerso.Highlighting.Highlighted) : CoreM Unit :=
-  modifyEnv fun env => highlightedCodeExt.addEntry env (name, hl)
-
-/-- Get highlighted code for a declaration from the environment. -/
-def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.Highlighting.Highlighted :=
-  highlightedCodeExt.find? env name
-
-/-- Capture highlighting for a declaration using current command state's info trees.
-    Must be called from CommandElabM while info trees are still available.
-
-    This is the preferred method for capturing highlighting because it uses the
-    already-available info trees from elaboration, avoiding position mismatches
-    that occur when re-elaborating source code later. -/
-def captureHighlightingFromCommandState (name : Name) (stx : Syntax) : CommandElabM Unit := do
-  try
-    let trees := (← get).infoState.trees
-    let messages := (← get).messages.toArray.filter (!·.isSilent)
-    let suppressedNS : List Name := []
-    trace[blueprint.debug] "Capturing highlighting for {name}: {trees.size} info trees, syntax kind: {stx.getKind}"
-    -- Run SubVerso highlighting in TermElabM context
-    let hl ← liftTermElabM <| highlightIncludingUnparsed stx messages trees suppressedNS
-    trace[blueprint.debug] "Highlighting captured for {name}: {repr hl |>.pretty.length} chars"
-    -- Store in extension
-    modifyEnv fun env => highlightedCodeExt.addEntry env (name, hl)
-  catch e =>
-    -- SubVerso can crash on some declarations; log and continue gracefully
-    logWarning m!"Failed to capture highlighting for {name}: {e.toMessageData}"
-
 end Architect

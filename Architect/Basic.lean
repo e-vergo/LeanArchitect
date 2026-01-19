@@ -1,7 +1,6 @@
 import Lean
 import Batteries.Lean.NameMapAttribute
 import SubVerso.Highlighting
-import Architect.Highlighting
 
 
 open Lean Elab
@@ -201,8 +200,11 @@ def splitAtDefinitionAssign (hl : Highlighted) (splitAtAssign : Bool := true)
       return (signature, if body.isEmpty then none else some body)
 
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information.
-    Highlighted code should be captured during elaboration via the Hook mechanism. -/
-def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
+    Highlighted code is looked up from `highlightingMap` (from subverso-extract-mod) first,
+    then falls back to the environment extension (Hook mechanism during elaboration). -/
+def Node.toNodeWithPos (node : Node)
+    (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    : CoreM NodeWithPos := do
   let env ← getEnv
   if !env.contains node.name then
     return { node with hasLean := false, location := none, proofLocation := none, file := none }
@@ -237,8 +239,8 @@ def Node.toNodeWithPos (node : Node) : CoreM NodeWithPos := do
 
   let file ← (← getSrcSearchPath).findWithExt "lean" module
 
-  -- Get highlighted code captured during elaboration
-  let highlightedCode := getHighlightedCode? env node.name
+  -- Get highlighted code from the provided map (from subverso-extract-mod)
+  let highlightedCode := highlightingMap.find? node.name
 
   -- Split highlighted code at the definition's := using bracket-aware parsing
   -- Always strip @[blueprint ...] prefix; only split at := if there's a proof
