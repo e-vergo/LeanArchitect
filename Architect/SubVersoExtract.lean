@@ -58,20 +58,14 @@ def findExtractModExecutable (explicitPath? : Option FilePath := none) : IO (Opt
   return none
 
 /-- Run subverso-extract-mod on a module and return the raw JSON output.
-    Returns none if the executable is not found or the command fails. -/
+    Uses `lake exe` to ensure the correct toolchain and environment.
+    Returns none if the command fails. -/
 def runExtractMod (moduleName : Name) (projectRoot? : Option FilePath := none)
     : IO (Option String) := do
-  let some exePath ← findExtractModExecutable none
-    | do
-      IO.eprintln s!"Warning: subverso-extract-mod executable not found"
-      return none
-
-  let args := #[moduleName.toString]
-
-  -- Set up the process with inherited environment (LEAN_PATH, etc.)
+  -- Use `lake exe subverso-extract-mod` to ensure correct toolchain
   let proc : IO.Process.SpawnArgs := {
-    cmd := exePath.toString
-    args := args
+    cmd := "lake"
+    args := #["exe", "subverso-extract-mod", moduleName.toString]
     cwd := projectRoot?
     stdin := .null
     stdout := .piped
