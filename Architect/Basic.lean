@@ -113,6 +113,29 @@ def getHighlightedCode? (env : Environment) (name : Name) : Option SubVerso.High
   highlightedCodeExt.find? env name
 
 /--
+Extract the import block from a Lean source file.
+Returns lines from start of file up to and including the last import statement.
+-/
+def extractImports (contents : String) : String := Id.run do
+  let lines := contents.splitOn "\n"
+  let mut lastImportLine : Nat := 0
+  for i in [:lines.length] do
+    let line := lines[i]!.trimAsciiStart.toString
+    -- Check for import, open, or set_option at file level (before declarations)
+    if line.startsWith "import " || line.startsWith "open " || line.startsWith "set_option " then
+      lastImportLine := i + 1
+    -- Stop at first declaration keyword (def, theorem, lemma, etc.)
+    else if line.startsWith "def " || line.startsWith "theorem " || line.startsWith "lemma " ||
+            line.startsWith "structure " || line.startsWith "class " || line.startsWith "instance " ||
+            line.startsWith "inductive " || line.startsWith "abbrev " || line.startsWith "@[" ||
+            line.startsWith "namespace " || line.startsWith "section " ||
+            line.startsWith "variable " || line.startsWith "/-" then
+      break
+  -- Include lines 0 to lastImportLine
+  let importLines := lines.toArray[:lastImportLine].toArray.toList
+  "\n".intercalate importLines
+
+/--
 Compute SubVerso highlighting for source code at a given range in a file.
 This re-elaborates the source with proper info tree context.
 Returns `none` if highlighting fails for any reason.
@@ -130,7 +153,7 @@ def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
   if startLine >= lines.length || endLine >= lines.length then
     return none
 
-  -- Extract lines in range
+  -- Extract lines in range (the declaration)
   let mut extractedLines : Array String := #[]
   for i in [startLine:endLine + 1] do
     if h : i < lines.length then
@@ -148,7 +171,12 @@ def computeHighlighting (file : System.FilePath) (range : DeclarationRange)
         -- Middle lines: full line
         extractedLines := extractedLines.push line
 
-  let source := "\n".intercalate extractedLines.toList
+  let declSource := "\n".intercalate extractedLines.toList
+
+  -- Extract imports from file header and prepend to declaration
+  -- This allows name resolution during re-elaboration
+  let imports := extractImports contents
+  let source := if imports.isEmpty then declSource else imports ++ "\n\n" ++ declSource
 
   -- Try highlighting with graceful fallback
   -- Note: Some declarations may cause SubVerso to panic on certain info tree patterns.
