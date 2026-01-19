@@ -69,7 +69,7 @@ def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array Stri
           proc {
             cmd := exeFile.toString
             args := #["single", "--build", buildDir.toString,
-                      "--highlighted-json", hlFile.toString,
+                      "--highlightedJson", hlFile.toString,
                       "--options", leanOptions, mod.name.toString] ++ extractArgs
             env := ← getAugmentedEnv
           }
@@ -88,7 +88,7 @@ def buildModuleBlueprintSafe (mod : Module) (ext : String) : FetchM (Job Unit) :
         buildFileUnlessUpToDate' mainFile do
           let env ← getAugmentedEnv
           let baseArgs := #["single", "--build", buildDir.toString,
-                            "--highlighted-json", hlFile.toString,
+                            "--highlightedJson", hlFile.toString,
                             "--options", leanOptions, mod.name.toString]
           -- Highlighting is now pre-computed via facet, just run extraction
           proc {
