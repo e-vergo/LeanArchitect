@@ -187,7 +187,7 @@ def splitAtDefinitionAssign (hl : Highlighted) (splitAtAssign : Bool := true)
     | .tactics _ _ _ content :: rest => todo := content :: rest
     | node :: rest =>
       let isDefKw := match node with
-        | .token ⟨_, content⟩ => content ∈ ["def", "theorem", "lemma", "abbrev", "instance", "example"]
+        | .token ⟨_, content⟩ => content ∈ ["def", "theorem", "lemma", "abbrev", "instance", "example", "structure", "class", "inductive"]
         | _ => false
       tokens := tokens.push (node, isDefKw)
       todo := rest
@@ -213,14 +213,24 @@ def splitAtDefinitionAssign (hl : Highlighted) (splitAtAssign : Bool := true)
         for c in content.toList do
           if c ∈ ['(', '[', '{', '⟨'] then depth := depth + 1
           else if c ∈ [')', ']', '}', '⟩'] then depth := depth - 1
-        -- Check for `:=` at depth 0
-        if content == ":=" && depth == 0 then
+        -- Check for `:=` at depth 0 (but don't break yet - check for `by`)
+        if content == ":=" && depth == 0 && splitIdx.isNone then
           splitIdx := some i
+        -- If we already found `:=`, check if current token is `by` to include it
+        else if splitIdx.isSome && content == "by" then
+          splitIdx := some i
+          break
+        -- If we found `:=` and this is a non-whitespace token that's not `by`, stop
+        else if splitIdx.isSome then
+          -- Don't break on whitespace-only text
           break
       | .text s =>
         for c in s.toList do
           if c ∈ ['(', '[', '{', '⟨'] then depth := depth + 1
           else if c ∈ [')', ']', '}', '⟩'] then depth := depth - 1
+        -- If we already found `:=` and this text has non-whitespace, stop looking for `by`
+        if splitIdx.isSome && s.toList.any (fun c => !c.isWhitespace) then
+          break
       | _ => pure ()
 
   -- Always start from def keyword to strip any prefix (e.g., @[blueprint ...])
