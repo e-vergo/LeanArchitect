@@ -411,8 +411,13 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
 -- Theorem declarations with @[blueprint]
 elab_rules : command
   | `($mods:declModifiers theorem $declId:declId $_sig:declSig $_val:declVal) => do
-    if (← inCaptureHook) then throwUnsupportedSyntax
-    if hasBlueprintAttr mods then
+    trace[blueprint.debug] "elab_rules matched theorem pattern"
+    if (← inCaptureHook) then
+      trace[blueprint.debug] "  inCaptureHook=true, skipping"
+      throwUnsupportedSyntax
+    let hasBlueprint := hasBlueprintAttr mods
+    trace[blueprint.debug] "  hasBlueprint={hasBlueprint}"
+    if hasBlueprint then
       elabDeclAndCaptureHighlighting (← getRef) declId
     else
       throwUnsupportedSyntax
@@ -421,7 +426,9 @@ elab_rules : command
 elab_rules : command
   | `($mods:declModifiers def $declId:declId $_sig:optDeclSig $_val:declVal) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
-    if hasBlueprintAttr mods then
+    let hasBlueprint := hasBlueprintAttr mods
+    trace[blueprint.debug] "elab_rules def: hasBlueprint={hasBlueprint}"
+    if hasBlueprint then
       elabDeclAndCaptureHighlighting (← getRef) declId
     else
       throwUnsupportedSyntax
