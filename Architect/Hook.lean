@@ -6,6 +6,7 @@ import Lean
 import Batteries.Lean.NameMapAttribute
 import SubVerso.Highlighting
 import SubVerso.Module
+import Architect.Basic
 import Architect.Highlighting
 import Architect.HtmlRender
 import Architect.HookState
@@ -763,7 +764,7 @@ def getDefaultLatexEnv (name : Name) : CommandElabM String := do
     @param file Optional source file path
     @param location Optional declaration position range -/
 def generateDeclarationTex (name : Name) (config : BlueprintConfig)
-    (_highlighting : Option Highlighted) (_htmlCode : Option String)
+    (highlighting : Option Highlighted) (_htmlCode : Option String)
     (file : Option System.FilePath) (location : Option DeclarationRange)
     : CommandElabM String := do
   let latexLabel := config.latexLabel.getD name.toString
@@ -784,8 +785,22 @@ def generateDeclarationTex (name : Name) (config : BlueprintConfig)
     let posStr := s!"{f}|{loc.pos.line}|{loc.pos.column}|{loc.endPos.line}|{loc.endPos.column}"
     out := out ++ s!"\\leanposition\{{posStr}}\n"
 
-  -- Note: Highlighting data is in dressed JSON files, not embedded in .tex
-  -- to keep file sizes manageable
+  -- Embed syntax highlighting data (base64-encoded HTML)
+  if let some hl := highlighting then
+    -- Split into signature and proof body
+    let hasProof := config.proof.isSome
+    let (sigHl, bodyHl) := splitAtDefinitionAssign hl (splitAtAssign := hasProof)
+
+    -- Render signature to HTML and base64 encode
+    let sigHtml := HtmlRender.renderHighlightedToHtml sigHl
+    let sigBase64 := stringToBase64 sigHtml
+    out := out ++ s!"\\leansignaturesourcehtml\{{sigBase64}}\n"
+
+    -- Render proof body if present
+    if let some proofHl := bodyHl then
+      let proofHtml := HtmlRender.renderHighlightedToHtml proofHl
+      let proofBase64 := stringToBase64 proofHtml
+      out := out ++ s!"\\leanproofsourcehtml\{{proofBase64}}\n"
 
   -- Uses (from config, not inferred)
   unless config.usesLabels.isEmpty do
