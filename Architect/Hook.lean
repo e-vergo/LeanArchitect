@@ -713,13 +713,21 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
             config := { config with statement := some text.trimAscii.toString }
       -- blueprintProofOption: "proof" " := " plainDocComment
       else if innerKind == `Architect.blueprintProofOption then
+        trace[blueprint.debug] "Found blueprintProofOption, innerOpt has {innerOpt.getNumArgs} args"
         if let some docStx := innerOpt[2]? then
+          trace[blueprint.debug] "docStx[2] found: {docStx}"
           let text ← liftCoreM <| getDocStringText ⟨docStx⟩
+          trace[blueprint.debug] "Parsed proof text: {text.take 50}..."
           if !text.isEmpty then
             config := { config with proof := some text.trimAscii.toString }
+        else
+          trace[blueprint.debug] "innerOpt[2]? returned none"
       -- For other options, we skip for now as they're not essential for .tex generation
       -- (uses, proofUses require name resolution which is complex)
+      else
+        trace[blueprint.debug] "Unknown option kind: {innerKind}"
 
+  trace[blueprint.debug] "parseBlueprintConfig result: statement={config.statement.isSome}, proof={config.proof.isSome}"
   return config
 
 /-! ## LaTeX Generation -/
