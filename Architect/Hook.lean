@@ -705,25 +705,17 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
       -- blueprintStatementOption: "statement" " := " plainDocComment
       else if innerKind == `Architect.blueprintStatementOption then
         if let some docStx := innerOpt[2]? then
-          -- plainDocComment is a doc comment like /-- ... -/
-          let text := docStx.getSubstring?.map (·.toString) |>.getD ""
+          -- Cast to TSyntax `Lean.Parser.Command.docComment and use getDocStringText
+          -- (plainDocComment produces docComment-kinded syntax)
+          let text ← liftCoreM <| getDocStringText ⟨docStx⟩
           if !text.isEmpty then
-            -- Strip /-- and -/ markers using substring extraction
-            let text := text.trim
-            let text := if text.length > 6 then
-              text.extract ⟨3⟩ ⟨text.length - 2⟩  -- Skip "/--" and "-/"
-            else text
-            config := { config with statement := some text.trim }
+            config := { config with statement := some text.trimAscii.toString }
       -- blueprintProofOption: "proof" " := " plainDocComment
       else if innerKind == `Architect.blueprintProofOption then
         if let some docStx := innerOpt[2]? then
-          let text := docStx.getSubstring?.map (·.toString) |>.getD ""
+          let text ← liftCoreM <| getDocStringText ⟨docStx⟩
           if !text.isEmpty then
-            let text := text.trim
-            let text := if text.length > 6 then
-              text.extract ⟨3⟩ ⟨text.length - 2⟩
-            else text
-            config := { config with proof := some text.trim }
+            config := { config with proof := some text.trimAscii.toString }
       -- For other options, we skip for now as they're not essential for .tex generation
       -- (uses, proofUses require name resolution which is complex)
 
