@@ -1,308 +1,214 @@
-> **Fork Notice:** This is a fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)
-> with experimental side-by-side display features.
->
-> **Warning:** This fork is not production-ready. Use at your own risk. APIs may have breaking changes.
-
 # LeanArchitect
 
-LeanArchitect is a tool for generating the blueprint data of a Lean project directly from Lean.
+**LeanArchitect** is a lightweight Lean 4 library that provides the `@[blueprint]` attribute for marking declarations in mathematical formalization projects. It stores metadata about theorems, definitions, and their dependencies without any artifact generation.
 
-The blueprint is a high-level plan of a Lean project, consisting of a series of nodes (theorems and definitions) and the dependency relations between them.
-The purpose of LeanArchitect is to make it easier to write the blueprint by generating blueprint data directly from Lean.
+## Architecture
 
-Start by annotating definitions and theorems in Lean with the `@[blueprint]` tag. They will then be exported to LaTeX, which you may then put in the blueprint.
+LeanArchitect is the **metadata layer** in the blueprint toolchain:
 
-This tool is built to complement [leanblueprint](https://github.com/PatrickMassot/leanblueprint) and its structure is inspired by [doc-gen4](https://github.com/leanprover/doc-gen4). The idea is inspired by [leanblueprint-extract](https://github.com/AlexKontorovich/PrimeNumberTheoremAnd/tree/main/leanblueprint-extract).
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     YOUR LEAN PROJECT                               │
+│                                                                     │
+│  @[blueprint "thm:foo"]                                             │
+│  theorem foo : P → Q := ...                                         │
+└─────────────────────────────────────────────────────────────────────┘
+           │                              │
+           │ Metadata only                │ + Artifact generation
+           ▼                              ▼
+┌─────────────────────┐    ┌─────────────────────────────────────────┐
+│   LEANARCHITECT     │    │                DRESS                    │
+│   (this library)    │    │   (recommended for most projects)       │
+├─────────────────────┤    ├─────────────────────────────────────────┤
+│ • @[blueprint] attr │    │ • Re-exports LeanArchitect              │
+│ • Node/NodePart     │    │ • SubVerso syntax highlighting          │
+│ • Dependency infer  │    │ • Verso HTML rendering                  │
+│ • NO SubVerso/Verso │    │ • LaTeX with embedded hover data        │
+│ • Fast compilation  │    │ • Dressed artifacts for leanblueprint   │
+└─────────────────────┘    └─────────────────────────────────────────┘
+                                          │
+                                          ▼
+                           ┌─────────────────────────────────────────┐
+                           │            LEANBLUEPRINT                │
+                           │  Consumes Dress artifacts to produce   │
+                           │  interactive website + PDF              │
+                           └─────────────────────────────────────────┘
+```
 
-## Side-by-Side Display (Experimental)
+**For most projects, import [Dress](https://github.com/e-vergo/Dress) instead of LeanArchitect directly.** Dress re-exports all of LeanArchitect's functionality and adds artifact generation.
 
-This fork integrates with a companion leanblueprint fork for side-by-side LaTeX/Lean display in blueprint documents.
+## Installation
 
-**Key features:**
-
-- **Lake facet caching:** The `highlighted` facet runs `subverso-extract-mod` to extract SubVerso JSON highlighting data and caches it. The `blueprint` facet depends on `highlighted` and uses the cached data path.
-- **Signature/proof splitting:** For theorems, the code is split at the `:=` token to separate the signature from the proof body, enabling distinct display of each part.
-- **Base64-encoded output:** SubVerso JSON is base64-encoded and emitted via `\leansignaturesource{}` and `\leanproofsource{}` LaTeX commands for processing by the companion leanblueprint fork.
-
-**Requirement:** This fork requires the companion fork [e-vergo/leanblueprint](https://github.com/e-vergo/leanblueprint) to render the side-by-side display.
-
-## Instructions
-
-First, install [leanblueprint](https://github.com/PatrickMassot/leanblueprint) and follow the instructions there to set up a blueprint project using `leanblueprint new`, if not already done. (See also instructions below for converting from an existing project.)
-
-Add LeanArchitect to the lakefile. For example:
+If you only need the `@[blueprint]` attribute without artifact generation:
 
 ```toml
 [[require]]
 name = "LeanArchitect"
-git = "https://github.com/e-vergo/LeanArchitect.git"
+git = "https://github.com/e-vergo/LeanArchitect"
 rev = "main"
 ```
 
-To extract the blueprint for a module, first `import Architect` and then annotate key theorems and definitions in the file with `@[blueprint]`:
+**Recommended:** For full blueprint functionality with syntax highlighting:
+
+```toml
+[[require]]
+name = "Dress"
+git = "https://github.com/e-vergo/Dress"
+rev = "main"
+```
+
+## Usage
+
+### Basic `@[blueprint]` Attribute
 
 ```lean
-import Architect
+import Architect  -- or `import Dress` for artifact generation
 
-@[blueprint "thm:my-theorem"]
-theorem my_theorem : Foo Bar := by foo
+/-- The sum of two even numbers is even. -/
+@[blueprint "lem:even-sum"]
+theorem even_add_even (a b : ℕ) (ha : Even a) (hb : Even b) : Even (a + b) := by
+  obtain ⟨k, hk⟩ := ha
+  obtain ⟨l, hl⟩ := hb
+  exact ⟨k + l, by omega⟩
 ```
 
-(See also a full example below.)
-
-Then input the extracted blueprint source to the blueprint document (typically, `blueprint/src/content.tex`):
-
-```latex
-% This makes the macros `\inputleanmodule` and `\inputleannode` available.
-\input{../../.lake/build/blueprint/library/Example}
-
-% Input the blueprint theorem `my_theorem`:
-\inputleannode{thm:my-theorem}.
-
-% You may also input an entire module:
-% \inputleanmodule{Example.MyNat}
-```
-
-Then run:
-
-```sh
-# Generate the blueprint to .lake/build/blueprint
-lake build :blueprint
-# Build the blueprint using leanblueprint
-leanblueprint pdf
-leanblueprint web
-```
-
-If you see LaTeX errors here, you may need to manually fix some LaTeX content so that the extracted node compiles.
-
-## Example
-
-This example is hosted at [LeanArchitect-example](https://github.com/hanwenzhu/LeanArchitect-example). Consider the following `MyNat` API:
+### Attribute Options
 
 ```lean
--- Example/MyNat.lean
-
-import Architect
-
-@[blueprint]
-inductive MyNat : Type where
-  | zero : MyNat
-  | succ : MyNat → MyNat
-
-namespace MyNat
-
-@[blueprint "def:nat-add"
-  (statement := /-- Natural number addition. -/)]
-def add (a b : MyNat) : MyNat :=
-  match b with
-  | zero => a
-  | succ b => succ (add a b)
-
-@[simp, blueprint
-  (statement := /-- For any natural number $a$, $0 + a = a$,
-    where $+$ is \cref{def:nat-add}. -/)]
-theorem zero_add (a : MyNat) : add zero a = a := by
-  /-- The proof follows by induction. -/
-  induction a <;> simp [*, add]
-
-@[blueprint
-  (statement := /-- For any natural numbers $a, b$,
-    $(a + 1) + b = (a + b) + 1$. -/)]
-theorem succ_add (a b : MyNat) : add (succ a) b = succ (add a b) := by
-  /-- Proof by induction on $b$. -/
-  sorry
-
-@[blueprint
-  (statement := /-- For any natural numbers $a, b$,
-    $a + b = b + a$. -/)]
-theorem add_comm (a b : MyNat) : add a b = add b a := by
-  induction b with
-  | zero =>
-    have := trivial
-    /-- The base case follows from \cref{MyNat.zero_add}. -/
-    simp [add]
-  | succ b ih =>
-    /-- The inductive case follows from \cref{MyNat.succ_add}. -/
-    sorry_using [succ_add]  -- the `sorry_using` tactic declares dependency
-
--- Additional content omitted
-
-end MyNat
+@[blueprint "thm:main"
+  (title := "Main Theorem")
+  (statement := /-- Custom statement text for LaTeX -/)
+  (proof := /-- Custom proof explanation -/)
+  (uses := [lem_helper, thm_base])           -- Explicit dependencies
+  (proofUses := [lem_technical])             -- Proof-only dependencies
+  (notReady := true)                          -- Mark as work-in-progress
+  (discussion := 42)                          -- GitHub issue number
+  (latexEnv := "theorem")]                    -- LaTeX environment
+theorem mainTheorem : ... := ...
 ```
 
-The (automatic) output of the above example Lean script is:
+### Dependency Inference
 
-![Blueprint web](https://raw.githubusercontent.com/hanwenzhu/LeanArchitect-example/refs/heads/main/images/web.png)
-
-With dependency graph:
-
-![Depedency graph](https://raw.githubusercontent.com/hanwenzhu/LeanArchitect-example/refs/heads/main/images/depgraph.png)
-
-## Specifying the blueprint
-
-After tagging with `@[blueprint]`, LeanArchitect will:
-
-1. Extract the statement and proof of a node from the `@[blueprint]` annotation and docstrings in the tactic proof.
-2. Infer the dependencies of a node from the constants used in the statement or proof.
-3. Infer whether the statement or proof is ready (i.e. `\leanok`) from whether it is sorry-free.
-
-You may override the constants used in the statement or proof with the `uses` and `proofUses` options, or with the `using` tactic.
-
-To view the extracted blueprint data, use `#show_blueprint` or `#show_blueprint theorem_name`.
-
-The supported options of `@[blueprint]` are:
+LeanArchitect automatically infers dependencies by analyzing which constants a declaration uses:
 
 ```lean
-@[blueprint
-  "latex-label"             -- The LaTeX label to use for the node (default: Lean name)
-  (statement := /-- ... -/) -- The statement of the node in LaTeX
-  (hasProof := true)        -- If the node has a proof part (default: true if the node is a theorem)
-  (proof := /-- ... -/)     -- The proof of the node in LaTeX (default: the docstrings in proof tactics)
-  (uses := [a, "b"])        -- The dependencies of the node, as Lean constants or LaTeX labels (default: inferred)
-  (proofUses := [a, "b"])   -- The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred)
-  (title := /-- Title -/)   -- The title of the node in LaTeX
-  (notReady := true)        -- Whether the node is not ready
-  (discussion := 123)       -- The discussion issue number of the node
-  (latexEnv := "lemma")     -- The LaTeX environment to use for the node (default: "theorem" or "definition")
-]
+@[blueprint "lem:a"]
+lemma lemA : ... := ...
+
+@[blueprint "lem:b"]
+lemma lemB : ... := lemA  -- Automatically depends on lem:a
+
+@[blueprint "thm:c"]
+theorem thmC : ... := by
+  apply lemB              -- Proof depends on lem:b
 ```
 
-## Mixing informal and formal blueprints
+Use `(excludes := [-name])` to remove inferred dependencies, or `(uses := [name])` to add explicit ones.
 
-At the start of a project, theorems or definitions are usually written only in LaTeX, and their statements are not ready to be formalized in Lean.
-LeanArchitect supports mixing such *informal* nodes written in LaTeX with *formal* nodes written in Lean. Typically, the workflow of an entire project may look like this:
+## Core Data Structures
 
-1. Write a blueprint in LaTeX
-2. Set up a new Lean project with this blueprint
-3. Formalize a theorem `my_theorem` from LaTeX into Lean, and tag it with `@[blueprint]`
-4. Replace this theorem in LaTeX with `\inputleannode{my_theorem}`, and return to (3)
+### Node
 
-One utility script for automating the conversion is:
+Represents a single blueprint declaration:
 
-```sh
-# Convert from a LaTeX node that has a Lean corresponding part (i.e. with `\lean`)
-# to a `\inputleannode` command, and try to automatically tag the Lean part with
-# `@[blueprint]`.
-lake script run blueprintConvert --nodes <label of node>
+```lean
+structure Node where
+  name : Name           -- Lean name (e.g., `MyModule.myTheorem`)
+  latexLabel : String   -- LaTeX label (e.g., "thm:my-theorem")
+  statement : NodePart  -- Statement with text and dependencies
+  proof : Option NodePart
+  notReady : Bool
+  discussion : Option Nat
+  title : Option String
 ```
 
-## Converting from existing blueprint format
+### NodePart
 
-With a project that uses the existing leanblueprint format, there is a Python script that tries to convert to the LeanArchitect format.
+Represents the statement or proof of a node:
 
-Currently, this script depends on a recent version of Python with `loguru` and `pydantic` installed (install by `pip3 install loguru pydantic`).
-
-First go to a clean branch **without any uncommitted changes**, to prevent overwriting any work you have done.
-
-You can then convert to LeanArchitect format by adding `LeanArchitect` as a dependency to lakefile, run `lake update LeanArchitect`, ensure `leanblueprint checkdecls` works (i.e. all `\lean` are in Lean), and then run:
-
-```sh
-lake script run blueprintConvert
+```lean
+structure NodePart where
+  text : String                 -- Natural language description
+  uses : Array Name             -- Declared dependencies
+  excludes : Array Name         -- Excluded from inference
+  usesLabels : Array String     -- Dependencies by LaTeX label
+  excludesLabels : Array String
+  latexEnv : String            -- LaTeX environment name
 ```
 
-Note that this conversion occasionally ends in some small syntax errors.
+### Environment Extensions
 
-Please attend to the warnings in the output of the conversion script above. They might be caused by an incomplete or nonstandard blueprint and may cause further problems in the pipeline.
+- `blueprintExt : NameMapExtension Node` — All registered blueprint nodes
+- `latexLabelToLeanNamesExt` — Reverse mapping from LaTeX labels to Lean names
 
-The conversion will remove the `\uses` information in LaTeX and let LeanArchitect automatically infer dependencies in Lean, unless the code contains `sorry` (in which case `uses :=` and `proofUses :=` will be added). If `--add_uses` is specified then all `\uses` information is retained in Lean by `uses :=` and `proofUses :=`.
+## Additional Features
 
-You may use `--blueprint_root <root>` to specify the path to your blueprint, if it is not the default.
+### Blueprint Comments
 
-See `lake script run blueprintConvert -h` for all options.
+Add standalone comments that appear in the blueprint:
 
-## GitHub Actions integration
-
-If building the blueprint is part of the GitHub CI action, then you need to run `lake build :blueprint` before building the blueprint,
-so that the `\input` line above works. Here are some typical examples for doing this:
-
-- If you use `.github/workflows/blueprint.yml` from leanblueprint, then add the following step:
-
-```yaml
-      # Before "Build blueprint and copy to `home_page/blueprint`":
-      - name: Extract blueprint
-        run: ~/.elan/bin/lake build :blueprint
+```lean
+blueprint_comment "sec:intro" /--
+  This section introduces the main concepts...
+-/
 ```
 
-- If you use `.github/workflows/build-project.yml` from LeanProject, then add this `build-args` option to `leanprover/lean-action`:
+### Tactics
 
-```yaml
-      - name: Build the project
-        uses: leanprover/lean-action@...
-        with:
-          use-github-cache: false
-          build-args: :blueprint
+```lean
+-- Specify dependencies for a sorry
+theorem foo : P := by
+  sorry_using [lem_needed, thm_assumed]
+
+-- Specify dependencies mid-proof
+theorem bar : P := by
+  blueprint_using [helper_lemma]
+  apply helper_lemma
+  trivial
 ```
 
-## Extracting nodes in JSON
+### Multiple Declarations per Label
 
-To extract the blueprint nodes in machine-readable format, run:
-
-```sh
-lake build :blueprintJson
-```
-
-The output will be in `.lake/build/blueprint`.
-
-## Usage details
-
-### Multiple Lean declarations
-
-Multiple Lean declarations may correspond to the same node in the blueprint, by specifying the same label as:
+Multiple Lean declarations can share a label:
 
 ```lean
 @[blueprint "thm:a"] theorem a_part_one : ...
 @[blueprint "thm:a"] theorem a_part_two : ...
 ```
 
-The output will use `\lean{a_part_one, a_part_two}`, and `\leanok` only if both `a_part_one` and `a_part_two` are sorryless, and the `\uses` will also be merged.
-
-A special case is for `to_additive` pairs of theorems:
+Works with `to_additive`:
 
 ```lean
 @[to_additive (attr := blueprint "thm:b")] theorem b_mul : ...
 ```
 
-should produce a single node with `\lean{b_mul, b_add}`.
+## Modules
 
-### Weird highlight in VS Code
+| Module | Purpose |
+|--------|---------|
+| `Architect.Basic` | `Node`, `NodePart`, environment extensions |
+| `Architect.Attribute` | `@[blueprint]` attribute syntax and elaboration |
+| `Architect.CollectUsed` | Dependency inference from constant values |
+| `Architect.Command` | `blueprint_comment` command |
+| `Architect.Tactic` | `sorry_using`, `blueprint_using` tactics |
 
-If you notice the syntax highlighting makes entire blocks of Lean code a wrong color, it is likely that somewhere in a LaTeX comment there is something like `<a` which is parsed by VS Code as an HTML tag. Simply change it to `< a` and the highlights should then be fixed.
+## Design Philosophy
 
-### Extracting entire Lean file to LaTeX
+LeanArchitect is intentionally minimal:
 
-It is possible to convert an entire Lean file to LaTeX, by using `\inputleanmodule` in LaTeX,
-which will convert all nodes in the order they are defined in Lean. For example:
+- **No heavy dependencies** — Only requires `batteries`
+- **No artifact generation** — Leaves highlighting/rendering to Dress
+- **Fast compilation** — Doesn't slow down your build
+- **Separation of concerns** — Metadata collection vs. artifact generation
 
-```lean
--- Example.lean
-@[blueprint (statement := /-- My definition. -/)] def my_def : ...
-blueprint_comment /-- My comment about the definition. -/
-@[blueprint (statement := /-- My theorem. -/)] theorem my_theorem : ...
-```
+This allows projects to use `@[blueprint]` without SubVerso/Verso compilation overhead when rich output isn't needed.
 
-Then in LaTeX `\inputleanmodule{Example}` will expand to
+## Related Projects
 
-```
-\begin{definition} \lean{my_def} My definition. \end{definition}
+- **[Dress](https://github.com/e-vergo/Dress)** — Artifact generator (highlighting, HTML, LaTeX)
+- **[leanblueprint](https://github.com/e-vergo/leanblueprint)** — Website/PDF generator consuming Dress artifacts
+- **[Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)** — Upstream project this is forked from
 
-My comment about the definition.
+## License
 
-\begin{theorem} \lean{my_def} My theorem. \end{theorem}
-\begin{proof} ... \end{proof}
-```
-
-It is up to your design choice to use `\inputleanmodule` to have a blueprint that strictly follows the order in a Lean file,
-or use multiple `\inputleannode` to include declarations individually for more flexibility.
-
-### Suppressing a dependency relation
-
-If in Lean, `@[blueprint] theorem B` uses `@[blueprint] theorem A`, and you wish this not to appear in the dependency graph, then you may write:
-
-```lean
-@[blueprint] theorem A := ...
-@[blueprint (proofUses := [-A])] theorem B := ...
-```
-
-### Converting unformalized LaTeX nodes
-
-In the `blueprintConvert` script, informal-only nodes (nodes without `\lean`) are by default not converted to Lean. You may add `--convert_informal` to `blueprintConvert` to convert them, which will output Lean declarations like `@[blueprint] def my_def : (sorry : Type) := sorry` and `@[blueprint] theorem my_theorem : (sorry : Prop) := sorry` in the Lean project.
+Apache 2.0 — see [LICENSE](LICENSE) for details.
