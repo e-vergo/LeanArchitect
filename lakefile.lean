@@ -196,6 +196,23 @@ private def runCmd (cmd : String) (args : Array String) : ScriptM Unit := do
   if exitCode != 0 then
     throw <| IO.userError s!"Error running command {cmd} {args.toList}"
 
+/-- Build the project with dressed artifact generation enabled.
+
+    This runs `lake build` with `-Dblueprint.dress=true`, which causes Hook.lean to
+    automatically export dressed artifacts (highlighting, HTML, base64) for all
+    `@[blueprint]` declarations.
+
+    Usage: `lake run dress` or `lake run dress MyLib`
+
+    The dressed artifacts are written to `.lake/build/dressed/{Module/Path}.json`. -/
+script dress (args : List String) do
+  let lake ← getLake
+  let buildArgs := if args.isEmpty
+    then #["-Dblueprint.dress=true"]
+    else #["-Dblueprint.dress=true"] ++ args.toArray
+  runCmd lake.toString (#["build"] ++ buildArgs)
+  return 0
+
 /-- A script to convert an existing blueprint to LeanArchitect format,
 modifying the Lean and LaTeX source files in place. -/
 script blueprintConvert (args : List String) do

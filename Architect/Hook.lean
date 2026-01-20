@@ -11,25 +11,49 @@ import Architect.HtmlRender
 import Architect.HookState
 
 /-!
-# Elaboration-Time Highlighting Capture Infrastructure
+# Elaboration-Time "Dressed" Artifact Generation
 
-This module provides the core infrastructure for capturing SubVerso syntax highlighting
+This module provides the core infrastructure for capturing rich metadata ("dressed" artifacts)
 DURING Lean elaboration. Info trees (required for semantic highlighting) are ephemeral -
 they exist in `commandState.infoState.trees` during elaboration but are discarded afterward.
-This module captures highlighting while these trees are available.
+This module captures this data while it's available.
+
+## "Dressed" Artifacts
+
+"Dressed" code = bare Lean source + rich metadata captured during elaboration:
+- Semantic highlighting (SubVerso)
+- Pre-rendered HTML (Verso)
+- Type signatures
+- Source positions
+- Pre-computed base64 strings ready for TeX embedding
 
 ## Key Components
 
-1. **Environment extension** (`highlightedDeclExt`): Stores captured highlighting per declaration
+1. **Environment extension** (`dressedDeclExt`): Stores captured artifacts per declaration
 2. **Core capture function** (`captureHighlightingFromInfoTrees`): Calls SubVerso's highlight function
-3. **JSON serialization** (`serializeHighlightedToJson`, `writeHighlightingJson`): Export to JSON files
-4. **Module finalization hook**: Writes accumulated highlighting when module compilation completes
+3. **JSON serialization**: Export to `.lake/build/dressed/{Module/Path}.json`
+4. **Automatic export**: When `blueprint.dress=true`, artifacts are exported after each `@[blueprint]` declaration
 
 ## Usage
 
-The `@[blueprint]` attribute handler calls `captureHighlighting` after registering a node.
-When the module finishes compilation, all captured highlighting is exported to
-`.lake/build/highlighted/{Module/Path}.json`.
+Simply use `@[blueprint]` attributes on your declarations:
+
+```lean
+import Mathlib.Algebra.Group.Basic
+import Architect
+
+@[blueprint]
+theorem my_theorem : ... := by
+  ...
+```
+
+Run `lake build dress` to generate dressed artifacts. No explicit `#dress` command is needed -
+export happens automatically when the `blueprint.dress` option is true.
+
+**Files generated:** `.lake/build/dressed/{Module/Path}.json` containing:
+- `html`: Pre-rendered HTML string
+- `htmlBase64`: Base64-encoded HTML (for direct TeX embedding)
+- `jsonBase64`: Base64-encoded SubVerso JSON (for backward compatibility)
 -/
 
 open Lean Elab Command Term Meta
@@ -38,20 +62,29 @@ open SubVerso.Module
 
 namespace Architect
 
-/-! ## Environment Extension for Captured Highlighting -/
+/-! ## Blueprint Option for Dressing -/
+
+/-- Option to enable dressing during `lake build dress`.
+    When true, `#dress` will register a finalization hook to export dressed artifacts. -/
+register_option blueprint.dress : Bool := {
+  defValue := false
+  descr := "Enable dressed artifact generation (set by `lake build dress`)"
+}
+
+/-! ## Environment Extension for Captured Artifacts -/
 
 /-- Environment extension storing captured highlighting for blueprint declarations.
     Keyed by declaration name, stores the Highlighted value captured during elaboration. -/
-initialize highlightedDeclExt : NameMapExtension Highlighted ←
+initialize dressedDeclExt : NameMapExtension Highlighted ←
   registerNameMapExtension Highlighted
 
 /-- Get all captured highlighting for the current environment. -/
 def getModuleHighlighting (env : Environment) : NameMap Highlighted :=
-  highlightedDeclExt.getState env
+  dressedDeclExt.getState env
 
 /-- Add captured highlighting for a declaration to the environment. -/
 def addHighlighting (env : Environment) (declName : Name) (hl : Highlighted) : Environment :=
-  highlightedDeclExt.addEntry env (declName, hl)
+  dressedDeclExt.addEntry env (declName, hl)
 
 /-! ## Core Capture Function -/
 
@@ -135,6 +168,46 @@ def captureHighlighting (declName : Name) (stx : Syntax) : CommandElabM Unit := 
     -- Silently fail - highlighting is optional enhancement
     trace[blueprint.debug] "Failed to capture highlighting for {declName}"
 
+/-! ## Base64 Encoding -/
+
+/-- Base64 encoding alphabet. -/
+private def base64Chars : String :=
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+/-- Array of base64 characters for efficient indexing. -/
+private def base64Array : Array Char := base64Chars.toList.toArray
+
+/-- Encode a ByteArray to base64. -/
+def encodeBase64 (data : ByteArray) : String := Id.run do
+  let mut result := ""
+  let mut i := 0
+  while i < data.size do
+    let b0 := data.get! i
+    let b1 := if i + 1 < data.size then data.get! (i + 1) else 0
+    let b2 := if i + 2 < data.size then data.get! (i + 2) else 0
+
+    let c0 := (b0 >>> 2) &&& 0x3F
+    let c1 := ((b0 &&& 0x03) <<< 4) ||| ((b1 >>> 4) &&& 0x0F)
+    let c2 := ((b1 &&& 0x0F) <<< 2) ||| ((b2 >>> 6) &&& 0x03)
+    let c3 := b2 &&& 0x3F
+
+    result := result.push (base64Array[c0.toNat]!)
+    result := result.push (base64Array[c1.toNat]!)
+    if i + 1 < data.size then
+      result := result.push (base64Array[c2.toNat]!)
+    else
+      result := result.push '='
+    if i + 2 < data.size then
+      result := result.push (base64Array[c3.toNat]!)
+    else
+      result := result.push '='
+    i := i + 3
+  return result
+
+/-- Encode a String to base64 (UTF-8 encoded). -/
+def stringToBase64 (s : String) : String :=
+  encodeBase64 s.toUTF8
+
 /-! ## JSON Serialization Helpers -/
 
 /-- Serialize a Highlighted value to JSON using SubVerso's deduplicated export format.
@@ -155,7 +228,14 @@ def serializeHighlightingMapToJson (highlighting : NameMap Highlighted) : Json :
   let module : SubVerso.Module.Module := { items }
   module.toJson
 
-/-- Get the output path for a module's highlighting JSON file.
+/-- Get the output path for a module's dressed JSON file.
+    Returns `.lake/build/dressed/{Module/Path}.json` -/
+def getDressedOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
+  let modulePath := moduleName.components.foldl (init := buildDir / "dressed")
+    fun path component => path / component.toString
+  modulePath.withExtension "json"
+
+/-- Get the output path for a module's highlighting JSON file (legacy path).
     Returns `.lake/build/highlighted/{Module/Path}.json` -/
 def getHighlightingOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
   let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
@@ -195,7 +275,7 @@ def writeModuleHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
 
 /-! ## HTML Serialization -/
 
-/-- Get the output path for a module's highlighting HTML map file.
+/-- Get the output path for a module's highlighting HTML map file (legacy path).
     Returns `.lake/build/highlighted/{Module/Path}.html.json` -/
 def getHighlightingHtmlOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
   let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
@@ -209,22 +289,55 @@ def serializeHighlightingMapToHtmlJson (highlighting : NameMap Highlighted) : Js
     (name.toString, Json.str (HtmlRender.renderHighlightedToHtml hl))
   Json.mkObj entries
 
+/-- Serialize a NameMap of Highlighted values to the full dressed artifact format.
+    Includes HTML, base64-encoded HTML, and base64-encoded JSON for fast TeX generation.
+
+    Format per declaration:
+    ```json
+    {
+      "html": "<pre>...</pre>",
+      "htmlBase64": "PHByZT4uLi48L3ByZT4=",
+      "jsonBase64": "eyJoaWdobGlnaHRlZCI6Li4ufQ=="
+    }
+    ```
+-/
+def serializeDressedArtifacts (highlighting : NameMap Highlighted) : Json :=
+  let entries : List (String × Json) := highlighting.toList.map fun (name, hl) =>
+    let html := HtmlRender.renderHighlightedToHtml hl
+    let jsonStr := (toJson hl).compress
+    let artifact := Json.mkObj [
+      ("html", Json.str html),
+      ("htmlBase64", Json.str (stringToBase64 html)),
+      ("jsonBase64", Json.str (stringToBase64 jsonStr))
+    ]
+    (name.toString, artifact)
+  Json.mkObj entries
+
 /-- Write all captured module highlighting as HTML to a JSON map file.
-    The file is written to `.lake/build/highlighted/{Module/Path}.html.json`. -/
+    The file is written to `.lake/build/highlighted/{Module/Path}.html.json` (legacy path). -/
 def writeModuleHighlightingHtml (buildDir : System.FilePath) (moduleName : Name)
     (highlighting : NameMap Highlighted) : IO Unit := do
   if highlighting.isEmpty then return
   let path := getHighlightingHtmlOutputPath buildDir moduleName
   writeHighlightingJsonAtomic path (serializeHighlightingMapToHtmlJson highlighting)
 
+/-- Write all captured module dressed artifacts to a JSON file.
+    The file is written to `.lake/build/dressed/{Module/Path}.json`. -/
+def writeModuleDressedArtifacts (buildDir : System.FilePath) (moduleName : Name)
+    (highlighting : NameMap Highlighted) : IO Unit := do
+  if highlighting.isEmpty then return
+  let path := getDressedOutputPath buildDir moduleName
+  writeHighlightingJsonAtomic path (serializeDressedArtifacts highlighting)
+
 /-! ## Module Finalization -/
 
-/-- Export all captured highlighting for the current module to JSON and HTML.
+/-- Export all captured artifacts for the current module.
     Call this when module compilation completes.
 
-    Writes both:
-    - `.lake/build/highlighted/{Module/Path}.json` - SubVerso JSON format (backward compat)
-    - `.lake/build/highlighted/{Module/Path}.html.json` - Pre-rendered HTML map -/
+    Writes to three locations:
+    - `.lake/build/dressed/{Module/Path}.json` - Full dressed artifacts (new format)
+    - `.lake/build/highlighted/{Module/Path}.json` - SubVerso JSON format (legacy)
+    - `.lake/build/highlighted/{Module/Path}.html.json` - Pre-rendered HTML map (legacy) -/
 def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit := do
   let env ← getEnv
   let moduleName := env.header.mainModule
@@ -234,7 +347,16 @@ def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit :=
     trace[blueprint.debug] "No highlighting to export for {moduleName}"
     return
 
-  trace[blueprint] "Exporting {highlighting.size} highlighted declarations for {moduleName}"
+  trace[blueprint] "Exporting {highlighting.size} dressed declarations for {moduleName}"
+
+  -- Write dressed format (new unified format with base64 strings)
+  try
+    writeModuleDressedArtifacts buildDir moduleName highlighting
+    trace[blueprint] "Wrote dressed artifacts for {moduleName}"
+  catch e =>
+    let errMsg ← e.toMessageData.toString
+    IO.eprintln s!"[blueprint] Failed to write dressed artifacts for {moduleName}: {errMsg}"
+    trace[blueprint] "Failed to write dressed artifacts for {moduleName}: {e.toMessageData}"
 
   -- Write JSON format (backward compatibility with subverso-extract-mod)
   try
@@ -243,33 +365,50 @@ def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit :=
   catch e =>
     trace[blueprint] "Failed to write highlighting JSON for {moduleName}: {e.toMessageData}"
 
-  -- Write HTML format (pre-rendered for fast plasTeX processing)
+  -- Write HTML format (backward compatibility)
   try
     writeModuleHighlightingHtml buildDir moduleName highlighting
     trace[blueprint] "Wrote highlighting HTML for {moduleName}"
   catch e =>
-    -- Use IO.eprintln for visible errors during build
     let errMsg ← e.toMessageData.toString
     IO.eprintln s!"[blueprint] Failed to write highlighting HTML for {moduleName}: {errMsg}"
     trace[blueprint] "Failed to write highlighting HTML for {moduleName}: {e.toMessageData}"
 
-/-! ## Export Command -/
+/-! ## Dress Command -/
 
-/--
-Export captured blueprint highlighting to JSON.
+/-- Optional manual trigger for dressing.
+    With `blueprint.dress=true`, export happens automatically after each `@[blueprint]` declaration,
+    so this command is typically not needed. -/
+syntax (name := dress) "#dress" : command
 
-This command exports all highlighting captured via `@[blueprint]` attributes
-in the current module to a JSON file at `.lake/build/highlighted/{Module/Path}.json`.
+/-- IO.Ref to track if #dress has been called in this module. -/
+initialize dressEnabledRef : IO.Ref Bool ← IO.mkRef false
 
-Usage: Add this at the end of a file with `@[blueprint]` declarations:
-```
-#export_blueprint_highlighting
-```
+@[command_elab dress]
+def elabDress : CommandElab := fun _stx => do
+  -- Skip if dress mode is not enabled (regular `lake build`)
+  unless blueprint.dress.get (← getOptions) do return
+  -- Also skip if highlighting is disabled
+  unless blueprint.highlighting.get (← getOptions) do return
 
-The command is a no-op if:
-- No highlighting has been captured in the current module
-- The `blueprint.highlighting` option is disabled
--/
+  -- Mark this module as requiring dressing
+  dressEnabledRef.set true
+  trace[blueprint] "#dress: Module marked for dressing"
+
+/-- Check if dressing is enabled for the current module.
+    Returns true if `#dress` was called AND `blueprint.dress` option is true. -/
+def isDressEnabled : IO Bool := do
+  dressEnabledRef.get
+
+/-- Export dressed artifacts if dressing is enabled.
+    Call this after the last declaration in the module. -/
+def exportIfDressEnabled : CommandElabM Unit := do
+  unless (← dressEnabledRef.get) do return
+  let buildDir : System.FilePath := ".lake" / "build"
+  exportModuleHighlighting buildDir
+
+/-- Export all captured blueprint highlighting for the current module.
+    Writes to `.lake/build/dressed/`, `.lake/build/highlighted/`, and `.lake/build/highlighted/*.html.json`. -/
 syntax (name := exportBlueprintHighlighting) "#export_blueprint_highlighting" : command
 
 @[command_elab exportBlueprintHighlighting]
@@ -393,7 +532,10 @@ def withCaptureHookFlag (act : CommandElabM α) : CommandElabM α := do
     blueprintCaptureHookRef.set false
 
 /-- Elaborate a declaration command and capture highlighting for blueprint declarations.
-    This helper is called by the elab_rules below. -/
+    This helper is called by the elab_rules below.
+
+    When `blueprint.dress=true`, automatically exports dressed artifacts after each capture.
+    This allows `lake build dress` to work without requiring `#dress` in each source file. -/
 def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandElabM Unit := do
   -- Run standard command elaboration with the flag set to prevent recursion
   withCaptureHookFlag do
@@ -407,6 +549,11 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
       let resolvedName := if env.contains fullName then fullName else name
       if env.contains resolvedName then
         captureHighlighting resolvedName stx
+
+        -- Auto-export when dress mode is enabled (no #dress command needed)
+        if blueprint.dress.get (← getOptions) then
+          let buildDir : System.FilePath := ".lake" / "build"
+          exportModuleHighlighting buildDir
 
 /-- Elaboration rules for declarations with @[blueprint] attribute.
     These intercept declarations and capture highlighting after elaboration.

@@ -17,43 +17,7 @@ Conversion from Lean nodes to LaTeX.
 
 abbrev Latex := String
 
-/-- Base64 encoding alphabet. -/
-private def base64Chars : String :=
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-/-- Array of base64 characters for efficient indexing. -/
-private def base64Array : Array Char := base64Chars.toList.toArray
-
-/-- Encode a ByteArray to base64. -/
-private def encodeBase64 (data : ByteArray) : String := Id.run do
-  let mut result := ""
-  let mut i := 0
-  while i < data.size do
-    let b0 := data.get! i
-    let b1 := if i + 1 < data.size then data.get! (i + 1) else 0
-    let b2 := if i + 2 < data.size then data.get! (i + 2) else 0
-
-    let c0 := (b0 >>> 2) &&& 0x3F
-    let c1 := ((b0 &&& 0x03) <<< 4) ||| ((b1 >>> 4) &&& 0x0F)
-    let c2 := ((b1 &&& 0x0F) <<< 2) ||| ((b2 >>> 6) &&& 0x03)
-    let c3 := b2 &&& 0x3F
-
-    result := result.push (base64Array[c0.toNat]!)
-    result := result.push (base64Array[c1.toNat]!)
-    if i + 1 < data.size then
-      result := result.push (base64Array[c2.toNat]!)
-    else
-      result := result.push '='
-    if i + 2 < data.size then
-      result := result.push (base64Array[c3.toNat]!)
-    else
-      result := result.push '='
-    i := i + 3
-  return result
-
-/-- Encode a String to base64 (UTF-8 encoded). -/
-private def stringToBase64 (s : String) : String :=
-  encodeBase64 s.toUTF8
+-- Note: base64 encoding functions are provided by Hook.lean (encodeBase64, stringToBase64)
 
 /-!
 We convert nodes to LaTeX.
