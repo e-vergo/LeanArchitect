@@ -248,6 +248,9 @@ def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit :=
     writeModuleHighlightingHtml buildDir moduleName highlighting
     trace[blueprint] "Wrote highlighting HTML for {moduleName}"
   catch e =>
+    -- Use IO.eprintln for visible errors during build
+    let errMsg ← e.toMessageData.toString
+    IO.eprintln s!"[blueprint] Failed to write highlighting HTML for {moduleName}: {errMsg}"
     trace[blueprint] "Failed to write highlighting HTML for {moduleName}: {e.toMessageData}"
 
 /-! ## Export Command -/
