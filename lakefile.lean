@@ -73,47 +73,57 @@ module_facet highlighted (mod : Module) : FilePath := do
       pure hlFile
 
 def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array String) : FetchM (Job Unit) := do
-  let exeJob ← extract_blueprint.fetch
   let modJob ← mod.leanArts.fetch
-  let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
   let buildDir := (← getRootPackage).buildDir
   let mainFile := mod.filePath (buildDir / "blueprint" / "module") ext
-  let leanOptions := Lean.toJson mod.leanOptions |>.compress
-  exeJob.bindM fun exeFile => do
-    hlJob.bindM fun hlFile => do  -- Thread through highlighted JSON path
-      modJob.mapM fun _ => do
-        -- The output is a main file plus a list of auxiliary files
-        buildFileUnlessUpToDate' mainFile do
-          proc {
-            cmd := exeFile.toString
-            args := #["single", "--build", buildDir.toString,
-                      "--highlightedJson", hlFile.toString,
-                      "--options", leanOptions, mod.name.toString] ++ extractArgs
-            env := ← getAugmentedEnv
-          }
+  -- Skip if .tex file already exists (generated during dressing with BLUEPRINT_DRESS=1)
+  -- This makes `lake build :blueprint` fast when dressing has already run
+  if ← mainFile.pathExists then
+    modJob.mapM fun _ => pure ()
+  else
+    -- Fall back to extract_blueprint for non-dressed builds
+    let exeJob ← extract_blueprint.fetch
+    let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
+    let leanOptions := Lean.toJson mod.leanOptions |>.compress
+    exeJob.bindM fun exeFile => do
+      hlJob.bindM fun hlFile => do  -- Thread through highlighted JSON path
+        modJob.mapM fun _ => do
+          -- The output is a main file plus a list of auxiliary files
+          buildFileUnlessUpToDate' mainFile do
+            proc {
+              cmd := exeFile.toString
+              args := #["single", "--build", buildDir.toString,
+                        "--highlightedJson", hlFile.toString,
+                        "--options", leanOptions, mod.name.toString] ++ extractArgs
+              env := ← getAugmentedEnv
+            }
 
 /-- Build module blueprint with highlighting, falling back to plain on crash. -/
 def buildModuleBlueprintSafe (mod : Module) (ext : String) : FetchM (Job Unit) := do
-  let exeJob ← extract_blueprint.fetch
   let modJob ← mod.leanArts.fetch
-  let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
   let buildDir := (← getRootPackage).buildDir
   let mainFile := mod.filePath (buildDir / "blueprint" / "module") ext
-  let leanOptions := Lean.toJson mod.leanOptions |>.compress
-  exeJob.bindM fun exeFile => do
-    hlJob.bindM fun hlFile => do
-      modJob.mapM fun _ => do
-        buildFileUnlessUpToDate' mainFile do
-          let env ← getAugmentedEnv
-          let baseArgs := #["single", "--build", buildDir.toString,
-                            "--highlightedJson", hlFile.toString,
-                            "--options", leanOptions, mod.name.toString]
-          -- Highlighting is now pre-computed via facet, just run extraction
-          proc {
-            cmd := exeFile.toString
-            args := baseArgs
-            env := env
-          }
+  -- Skip if .tex file already exists (generated during dressing with BLUEPRINT_DRESS=1)
+  if ← mainFile.pathExists then
+    modJob.mapM fun _ => pure ()
+  else
+    let exeJob ← extract_blueprint.fetch
+    let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
+    let leanOptions := Lean.toJson mod.leanOptions |>.compress
+    exeJob.bindM fun exeFile => do
+      hlJob.bindM fun hlFile => do
+        modJob.mapM fun _ => do
+          buildFileUnlessUpToDate' mainFile do
+            let env ← getAugmentedEnv
+            let baseArgs := #["single", "--build", buildDir.toString,
+                              "--highlightedJson", hlFile.toString,
+                              "--options", leanOptions, mod.name.toString]
+            -- Highlighting is now pre-computed via facet, just run extraction
+            proc {
+              cmd := exeFile.toString
+              args := baseArgs
+              env := env
+            }
 
 /-- A facet to extract the blueprint for a module (with syntax highlighting via cached facet). -/
 module_facet blueprint (mod : Module) : Unit := do

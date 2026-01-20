@@ -17,4 +17,9 @@ namespace Architect
     Using IO.Ref to avoid infinite recursion when our elab_rules call elabCommandTopLevel. -/
 initialize blueprintCaptureHookRef : IO.Ref Bool ← IO.mkRef false
 
+/-- Track declarations processed for .tex generation in this module.
+    Stores `(name, latexLabel)` pairs for later module header generation.
+    Reset at module boundaries by the elaboration hook. -/
+initialize texGeneratedDeclsRef : IO.Ref (Array (Lean.Name × String)) ← IO.mkRef #[]
+
 end Architect
