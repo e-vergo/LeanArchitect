@@ -691,57 +691,45 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
           config := { config with latexLabel := some label }
 
   -- Parse the remaining options
-  -- The rest of optsNode children are the blueprintOption nodes
-  dbg_trace s!"Iterating from 1 to {optsNode.getNumArgs}"
-  for i in [1:optsNode.getNumArgs] do
-    let optWrapper := optsNode[i]!
-    dbg_trace s!"  optWrapper[{i}].getKind = {optWrapper.getKind}, isNone = {optWrapper.isNone}"
-    -- Each option is wrapped in ppSpace, the actual option is inside
-    if optWrapper.isNone then continue
-    let opt := optWrapper[0]!
-    dbg_trace s!"    opt.getKind = {opt.getKind}, numArgs = {opt.getNumArgs}"
-    -- blueprintOption = "(" innerOption ")"
-    -- opt[0] = "(", opt[1] = innerOption, opt[2] = ")"
-    if let some innerOpt := opt[1]? then
-      let innerKind := innerOpt.getKind
-      dbg_trace s!"      innerOpt.getKind = {innerKind}"
+  -- optsNode[1] contains all blueprintOption nodes as children
+  -- (the * in the syntax creates a single node with multiple children)
+  if let some optsWrapper := optsNode[1]? then
+    if !optsWrapper.isNone then
+      dbg_trace s!"optsWrapper.getNumArgs = {optsWrapper.getNumArgs}"
+      for j in [0:optsWrapper.getNumArgs] do
+        let opt := optsWrapper[j]!
+        dbg_trace s!"  opt[{j}].getKind = {opt.getKind}, numArgs = {opt.getNumArgs}"
+        -- blueprintOption = "(" innerOption ")"
+        -- opt[0] = "(", opt[1] = innerOption, opt[2] = ")"
+        if let some innerOpt := opt[1]? then
+          let innerKind := innerOpt.getKind
+          dbg_trace s!"    innerOpt.getKind = {innerKind}"
 
-      -- Parse based on inner option kind
-      -- blueprintLatexLabelOption: "latexLabel" " := " str
-      if innerKind == `Architect.blueprintLatexLabelOption then
-        if let some strStx := innerOpt[2]? then
-          if let some label := strStx.isStrLit? then
-            config := { config with latexLabel := some label }
-      -- blueprintLatexEnvOption: "latexEnv" " := " str
-      else if innerKind == `Architect.blueprintLatexEnvOption then
-        if let some strStx := innerOpt[2]? then
-          if let some env := strStx.isStrLit? then
-            config := { config with latexEnv := some env }
-      -- blueprintStatementOption: "statement" " := " plainDocComment
-      else if innerKind == `Architect.blueprintStatementOption then
-        if let some docStx := innerOpt[2]? then
-          -- Cast to TSyntax `Lean.Parser.Command.docComment and use getDocStringText
-          -- (plainDocComment produces docComment-kinded syntax)
-          let text ← liftCoreM <| getDocStringText ⟨docStx⟩
-          if !text.isEmpty then
-            config := { config with statement := some text.trimAscii.toString }
-      -- blueprintProofOption: "proof" " := " plainDocComment
-      else if innerKind == `Architect.blueprintProofOption then
-        trace[blueprint.debug] "Found blueprintProofOption, innerOpt has {innerOpt.getNumArgs} args"
-        if let some docStx := innerOpt[2]? then
-          trace[blueprint.debug] "docStx[2] found: {docStx}"
-          let text ← liftCoreM <| getDocStringText ⟨docStx⟩
-          trace[blueprint.debug] "Parsed proof text: {text.take 50}..."
-          if !text.isEmpty then
-            config := { config with proof := some text.trimAscii.toString }
-        else
-          trace[blueprint.debug] "innerOpt[2]? returned none"
-      -- For other options, we skip for now as they're not essential for .tex generation
-      -- (uses, proofUses require name resolution which is complex)
-      else
-        trace[blueprint.debug] "Unknown option kind: {innerKind}"
+          -- Parse based on inner option kind
+          -- blueprintLatexLabelOption: "latexLabel" " := " str
+          if innerKind == `Architect.blueprintLatexLabelOption then
+            if let some strStx := innerOpt[2]? then
+              if let some label := strStx.isStrLit? then
+                config := { config with latexLabel := some label }
+          -- blueprintLatexEnvOption: "latexEnv" " := " str
+          else if innerKind == `Architect.blueprintLatexEnvOption then
+            if let some strStx := innerOpt[2]? then
+              if let some env := strStx.isStrLit? then
+                config := { config with latexEnv := some env }
+          -- blueprintStatementOption: "statement" " := " plainDocComment
+          else if innerKind == `Architect.blueprintStatementOption then
+            if let some docStx := innerOpt[2]? then
+              let text ← liftCoreM <| getDocStringText ⟨docStx⟩
+              if !text.isEmpty then
+                config := { config with statement := some text.trimAscii.toString }
+          -- blueprintProofOption: "proof" " := " plainDocComment
+          else if innerKind == `Architect.blueprintProofOption then
+            if let some docStx := innerOpt[2]? then
+              let text ← liftCoreM <| getDocStringText ⟨docStx⟩
+              if !text.isEmpty then
+                config := { config with proof := some text.trimAscii.toString }
+          -- For other options, skip (uses, proofUses require name resolution)
 
-  trace[blueprint.debug] "parseBlueprintConfig result: statement={config.statement.isSome}, proof={config.proof.isSome}"
   return config
 
 /-! ## LaTeX Generation -/
