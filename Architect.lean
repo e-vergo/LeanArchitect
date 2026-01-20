@@ -4,6 +4,7 @@ import Architect.CollectUsed
 import Architect.Command
 import Architect.Content
 import Architect.Highlighting
+import Architect.HookState
 import Architect.Hook
 import Architect.HtmlRender
 import Architect.Load
