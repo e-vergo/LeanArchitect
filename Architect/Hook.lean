@@ -47,8 +47,8 @@ theorem my_theorem : ... := by
   ...
 ```
 
-Run `lake build dress` to generate dressed artifacts. No explicit `#dress` command is needed -
-export happens automatically when the `blueprint.dress` option is true.
+Run `BLUEPRINT_DRESS=1 lake build` to generate dressed artifacts. No explicit command is needed
+in source files - export happens automatically when the environment variable is set.
 
 **Files generated:** `.lake/build/dressed/{Module/Path}.json` containing:
 - `html`: Pre-rendered HTML string
@@ -550,8 +550,11 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
       if env.contains resolvedName then
         captureHighlighting resolvedName stx
 
-        -- Auto-export when dress mode is enabled (no #dress command needed)
-        if blueprint.dress.get (← getOptions) then
+        -- Auto-export when dress mode is enabled (env var or option)
+        -- Check BLUEPRINT_DRESS=1 environment variable OR blueprint.dress option
+        let dressEnv ← IO.getEnv "BLUEPRINT_DRESS"
+        let dressEnabled := dressEnv == some "1" || blueprint.dress.get (← getOptions)
+        if dressEnabled then
           let buildDir : System.FilePath := ".lake" / "build"
           exportModuleHighlighting buildDir
 
@@ -581,8 +584,6 @@ def elabBlueprintDeclaration : CommandElab := fun stx => do
   trace[blueprint.debug] "elabBlueprintDeclaration: hasBlueprint={hasBlueprint}"
   if hasBlueprint then
     let declId := decl[1]
-    let declName := getDeclNameFromDeclId declId |>.getD `unknown
-    IO.println s!"[Hook] Capturing highlighting for @[blueprint] theorem: {declName}"
     elabDeclAndCaptureHighlighting stx declId
   else
     throwUnsupportedSyntax
