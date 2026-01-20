@@ -415,20 +415,23 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
 -- Use high priority to run before built-in elaborators
 @[command_elab Lean.Parser.Command.declaration]
 def elabBlueprintTheorem : CommandElab := fun stx => do
-  trace[blueprint.debug] "elabBlueprintTheorem called"
-  -- Only handle theorem declarations
+  -- Only handle declarations
   unless stx.getKind == ``Lean.Parser.Command.declaration do
     throwUnsupportedSyntax
   let decl := stx[1]
+  -- Only handle theorems
   unless decl.getKind == ``Lean.Parser.Command.theorem do
     throwUnsupportedSyntax
   if (← inCaptureHook) then
     throwUnsupportedSyntax
   let mods := stx[0]
   let hasBlueprint := hasBlueprintAttr mods
-  trace[blueprint.debug] "  hasBlueprint={hasBlueprint}"
+  -- Only print for theorems (to reduce noise)
+  IO.println s!"[Hook] Found theorem, @[blueprint]={hasBlueprint}"
+  trace[blueprint.debug] "elabBlueprintTheorem: hasBlueprint={hasBlueprint}"
   if hasBlueprint then
     let declId := decl[1]
+    IO.println s!"[Hook] CAPTURING highlighting for blueprint theorem"
     elabDeclAndCaptureHighlighting stx declId
   else
     throwUnsupportedSyntax
