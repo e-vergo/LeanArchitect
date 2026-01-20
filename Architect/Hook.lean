@@ -763,7 +763,7 @@ def getDefaultLatexEnv (name : Name) : CommandElabM String := do
     @param file Optional source file path
     @param location Optional declaration position range -/
 def generateDeclarationTex (name : Name) (config : BlueprintConfig)
-    (highlighting : Option Highlighted) (htmlCode : Option String)
+    (_highlighting : Option Highlighted) (_htmlCode : Option String)
     (file : Option System.FilePath) (location : Option DeclarationRange)
     : CommandElabM String := do
   let latexLabel := config.latexLabel.getD name.toString
