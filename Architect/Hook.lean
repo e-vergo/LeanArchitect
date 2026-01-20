@@ -364,8 +364,9 @@ def generateModuleHeader (moduleName : Name) : IO String := do
   let decls ← texGeneratedDeclsRef.get
 
   -- Build path to artifacts dir using forward slashes for LaTeX compatibility
+  -- Use ../ prefix because plastex runs from the blueprint/ subdirectory
   let modulePathComponents := moduleName.components.map (·.toString)
-  let artifactsDirPath := ".lake/build/blueprint/module/" ++
+  let artifactsDirPath := "../.lake/build/blueprint/module/" ++
     "/".intercalate modulePathComponents ++ ".artifacts"
 
   -- Generate \newleannode entries
