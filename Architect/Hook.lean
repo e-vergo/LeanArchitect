@@ -239,15 +239,15 @@ def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit :=
   try
     writeModuleHighlightingJson buildDir moduleName highlighting
     trace[blueprint] "Wrote highlighting JSON for {moduleName}"
-  catch _ =>
-    trace[blueprint.debug] "Failed to write highlighting JSON for {moduleName}"
+  catch e =>
+    trace[blueprint] "Failed to write highlighting JSON for {moduleName}: {e.toMessageData}"
 
   -- Write HTML format (pre-rendered for fast plasTeX processing)
   try
     writeModuleHighlightingHtml buildDir moduleName highlighting
     trace[blueprint] "Wrote highlighting HTML for {moduleName}"
-  catch _ =>
-    trace[blueprint.debug] "Failed to write highlighting HTML for {moduleName}"
+  catch e =>
+    trace[blueprint] "Failed to write highlighting HTML for {moduleName}: {e.toMessageData}"
 
 /-! ## Export Command -/
 
