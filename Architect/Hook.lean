@@ -332,7 +332,7 @@ def loadModuleHighlightingHtml (buildDir : System.FilePath) (moduleName : Name)
 
 /-! ## Declaration Interception via elab_rules
 
-We use `scoped elab_rules` to intercept declarations that have `@[blueprint]`.
+We use `elab_rules` to intercept declarations that have `@[blueprint]`.
 After standard elaboration completes (but while info trees still exist), we capture
 the highlighting and store it in the environment extension.
 
@@ -409,7 +409,7 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
 -/
 
 -- Theorem declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers theorem $declId:declId $_sig:declSig $_val:declVal) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
@@ -418,7 +418,7 @@ scoped elab_rules : command
       throwUnsupportedSyntax
 
 -- Definition declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers def $declId:declId $_sig:optDeclSig $_val:declVal) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
@@ -427,7 +427,7 @@ scoped elab_rules : command
       throwUnsupportedSyntax
 
 -- Abbreviation declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers abbrev $declId:declId $_sig:optDeclSig $_val:declVal) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
@@ -436,7 +436,7 @@ scoped elab_rules : command
       throwUnsupportedSyntax
 
 -- Structure declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers structure $declId:declId $_*) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
@@ -445,7 +445,7 @@ scoped elab_rules : command
       throwUnsupportedSyntax
 
 -- Class declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers class $declId:declId $_*) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
@@ -454,7 +454,7 @@ scoped elab_rules : command
       throwUnsupportedSyntax
 
 -- Inductive declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers inductive $declId:declId $_*) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
@@ -463,7 +463,7 @@ scoped elab_rules : command
       throwUnsupportedSyntax
 
 -- Instance declarations with @[blueprint]
-scoped elab_rules : command
+elab_rules : command
   | `($mods:declModifiers instance $[$_prio:namedPrio]? $declId:declId $_sig:declSig $_val:declVal) => do
     if (← inCaptureHook) then throwUnsupportedSyntax
     if hasBlueprintAttr mods then
