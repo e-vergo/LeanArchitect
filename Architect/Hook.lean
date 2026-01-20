@@ -784,14 +784,8 @@ def generateDeclarationTex (name : Name) (config : BlueprintConfig)
     let posStr := s!"{f}|{loc.pos.line}|{loc.pos.column}|{loc.endPos.line}|{loc.endPos.column}"
     out := out ++ s!"\\leanposition\{{posStr}}\n"
 
-  -- Highlighting (base64 encoded)
-  if let some hl := highlighting then
-    let jsonStr := (toJson hl).compress
-    let base64Json := stringToBase64 jsonStr
-    out := out ++ s!"\\leansource\{{base64Json}}\n"
-  if let some html := htmlCode then
-    let base64Html := stringToBase64 html
-    out := out ++ s!"\\leansourcehtml\{{base64Html}}\n"
+  -- Note: Highlighting data is in dressed JSON files, not embedded in .tex
+  -- to keep file sizes manageable
 
   -- Uses (from config, not inferred)
   unless config.usesLabels.isEmpty do
