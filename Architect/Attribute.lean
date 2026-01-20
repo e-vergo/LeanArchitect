@@ -1,8 +1,5 @@
 import Lean
-import Architect.Content
-import Architect.Hook
-import SubVerso.Highlighting
-
+import Architect.Basic
 
 open Lean Meta Elab
 

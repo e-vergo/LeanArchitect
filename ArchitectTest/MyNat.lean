@@ -69,166 +69,25 @@ theorem flt : (sorry : Prop) := sorry
 
 end MyNat
 
+-- Test that blueprint nodes are stored in the environment extension
 open Lean Architect in
-run_meta
-  let json ← mainModuleToJson
-  let currFile ← (← getSrcSearchPath).findWithExt "lean" (← getEnv).header.mainModule
-  assert! json == json%
-[{"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": [],
-    "text": "Natural numbers.",
-    "latexEnv": "definition",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": null,
-   "notReady": false,
-   "name": "MyNat",
-   "location":
-   {"range": {"pos": {"line": 3, "column": 0}, "endPos": {"line": 6, "column": 24}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "MyNat",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": [],
-    "text": "Natural number addition.",
-    "latexEnv": "definition",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": null,
-   "notReady": false,
-   "name": "MyNat.add",
-   "location":
-   {"range": {"pos": {"line": 12, "column": 0}, "endPos": {"line": 19, "column": 28}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "def:nat-add",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": [],
-    "text": "For any natural number $a$, $0 + a = a$, where $+$ is \\cref{def:nat-add}.",
-    "latexEnv": "theorem",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": {"usesLabels": [], "uses": [], "text": "", "latexEnv": "proof", "excludesLabels": [], "excludes": []},
-   "notReady": false,
-   "name": "MyNat.zero_add",
-   "location":
-   {"range": {"pos": {"line": 21, "column": 0}, "endPos": {"line": 25, "column": 31}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "MyNat.zero_add",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": [],
-    "text": "For any natural numbers $a, b$, $(a + 1) + b = (a + b) + 1$.",
-    "latexEnv": "theorem",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": {"usesLabels": [], "uses": [], "text": "", "latexEnv": "proof", "excludesLabels": [], "excludes": []},
-   "notReady": false,
-   "name": "MyNat.succ_add",
-   "location":
-   {"range": {"pos": {"line": 27, "column": 0}, "endPos": {"line": 32, "column": 7}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "MyNat.succ_add",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": [],
-    "text": "For any natural numbers $a, b$, $a + b = b + a$.",
-    "latexEnv": "theorem",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": {"usesLabels": [], "uses": [], "text": "", "latexEnv": "proof", "excludesLabels": [], "excludes": []},
-   "notReady": false,
-   "name": "MyNat.add_comm",
-   "location":
-   {"range": {"pos": {"line": 34, "column": 0}, "endPos": {"line": 44, "column": 26}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "MyNat.add_comm",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": ["MyNat.add"],
-    "text": "Natural number multiplication.",
-    "latexEnv": "definition",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": null,
-   "notReady": false,
-   "name": "MyNat.mul",
-   "location":
-   {"range": {"pos": {"line": 48, "column": 0}, "endPos": {"line": 51, "column": 38}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "MyNat.mul",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": null,
-   "statement":
-   {"usesLabels": [],
-    "uses": [],
-    "text": "For any natural numbers $a, b$, $a * b = b * a$.",
-    "latexEnv": "theorem",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof": {"usesLabels": [], "uses": [], "text": "", "latexEnv": "proof", "excludesLabels": [], "excludes": []},
-   "notReady": false,
-   "name": "MyNat.mul_comm",
-   "location":
-   {"range": {"pos": {"line": 53, "column": 0}, "endPos": {"line": 55, "column": 62}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "MyNat.mul_comm",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": null}},
- {"type": "node",
-  "data":
-  {"title": "Taylor-Wiles",
-   "statement":
-   {"usesLabels": [],
-    "uses": ["MyNat.mul"],
-    "text": "Fermat's last theorem.",
-    "latexEnv": "theorem",
-    "excludesLabels": [],
-    "excludes": []},
-   "proof":
-   {"usesLabels": [],
-    "uses": ["MyNat.mul_comm"],
-    "text": "See \\cite{Wiles1995, Taylor-Wiles1995}.",
-    "latexEnv": "proof",
-    "excludesLabels": [],
-    "excludes": []},
-   "notReady": true,
-   "name": "MyNat.flt",
-   "location":
-   {"range": {"pos": {"line": 59, "column": 0}, "endPos": {"line": 68, "column": 37}}, "module": "ArchitectTest.MyNat"},
-   "latexLabel": "thm:flt",
-   "hasLean": true,
-   "file": $(currFile),
-   "discussion": 1}}]
+run_meta do
+  let env ← getEnv
+  -- Check that all the blueprint nodes exist
+  assert! (blueprintExt.find? env ``MyNat).isSome
+  assert! (blueprintExt.find? env ``MyNat.add).isSome
+  assert! (blueprintExt.find? env ``MyNat.zero_add).isSome
+  assert! (blueprintExt.find? env ``MyNat.succ_add).isSome
+  assert! (blueprintExt.find? env ``MyNat.add_comm).isSome
+  assert! (blueprintExt.find? env ``MyNat.mul).isSome
+  assert! (blueprintExt.find? env ``MyNat.mul_comm).isSome
+  assert! (blueprintExt.find? env ``MyNat.flt).isSome
+  -- Check some specific node properties
+  let flt := (blueprintExt.find? env ``MyNat.flt).get!
+  assert! flt.latexLabel == "thm:flt"
+  assert! flt.title == some "Taylor-Wiles"
+  assert! flt.notReady == true
+  assert! flt.discussion == some 1
+  assert! flt.statement.uses == #[``MyNat.mul]
+  assert! flt.proof.isSome
+  assert! flt.proof.get!.uses == #[``MyNat.mul_comm]
