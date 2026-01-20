@@ -672,7 +672,11 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
   dbg_trace s!"optsNode.getNumArgs = {optsNode.getNumArgs}"
   for i in [0:optsNode.getNumArgs] do
     let child := optsNode[i]!
-    dbg_trace s!"optsNode[{i}].getKind = {child.getKind}, isNone = {child.isNone}"
+    dbg_trace s!"optsNode[{i}].getKind = {child.getKind}, isNone = {child.isNone}, numArgs = {child.getNumArgs}"
+    -- Print grandchildren
+    for j in [0:child.getNumArgs] do
+      let grandchild := child[j]!
+      dbg_trace s!"  optsNode[{i}][{j}].getKind = {grandchild.getKind}"
 
   -- blueprintOptions = (ppSpace str)? (ppSpace blueprintOption)*
   -- optsNode[0] = optional label string
