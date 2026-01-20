@@ -208,19 +208,26 @@ private def runCmd (cmd : String) (args : Array String) : ScriptM Unit := do
 
 /-- Build the project with dressed artifact generation enabled.
 
-    This runs `lake build` with `-Dblueprint.dress=true`, which causes Hook.lean to
-    automatically export dressed artifacts (highlighting, HTML, base64) for all
-    `@[blueprint]` declarations.
+    This creates a `.lake/build/.dress` marker file, then runs `lake build`.
+    Hook.lean detects this marker and automatically exports dressed artifacts
+    (highlighting, HTML, .tex) for all `@[blueprint]` declarations.
 
     Usage: `lake run dress` or `lake run dress MyLib`
 
-    The dressed artifacts are written to `.lake/build/dressed/{Module/Path}.json`. -/
+    The dressed artifacts are written to:
+    - `.lake/build/dressed/{Module/Path}.json` (highlighting data)
+    - `.lake/build/blueprint/module/{Module/Path}.tex` (LaTeX output) -/
 script dress (args : List String) do
   let lake ← getLake
-  let buildArgs := if args.isEmpty
-    then #["-Dblueprint.dress=true"]
-    else #["-Dblueprint.dress=true"] ++ args.toArray
+  -- Create marker file to signal dress mode to Hook.lean
+  let markerFile : System.FilePath := ".lake" / "build" / ".dress"
+  IO.FS.createDirAll markerFile.parent.get!
+  IO.FS.writeFile markerFile "1"
+  -- Run build
+  let buildArgs := args.toArray
   runCmd lake.toString (#["build"] ++ buildArgs)
+  -- Clean up marker file
+  IO.FS.removeFile markerFile
   return 0
 
 /-- A script to convert an existing blueprint to LeanArchitect format,

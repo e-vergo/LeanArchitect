@@ -913,10 +913,13 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) (mods : Opti
       if env.contains resolvedName then
         captureHighlighting resolvedName stx
 
-        -- Auto-export when dress mode is enabled (env var or option)
+        -- Auto-export when dress mode is enabled (env var, option, or marker file)
         -- Check BLUEPRINT_DRESS=1 environment variable OR blueprint.dress option
+        -- OR .lake/build/.dress marker file (created by `lake run dress`)
         let dressEnv ← IO.getEnv "BLUEPRINT_DRESS"
-        let dressEnabled := dressEnv == some "1" || blueprint.dress.get (← getOptions)
+        let markerFile : System.FilePath := ".lake" / "build" / ".dress"
+        let markerExists ← markerFile.pathExists
+        let dressEnabled := dressEnv == some "1" || blueprint.dress.get (← getOptions) || markerExists
         if dressEnabled then
           let buildDir : System.FilePath := ".lake" / "build"
           exportModuleHighlighting buildDir
