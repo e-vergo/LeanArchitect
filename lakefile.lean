@@ -44,7 +44,7 @@ require verso from git
     `subverso-extract-mod` to generate the highlighting.
 
     Cached by Lake - only rebuilds when module's olean changes. -/
-module_facet highlighted (mod : Module) : FilePath := do
+module_facet dressed (mod : Module) : FilePath := do
   let ws ← getWorkspace
   let modJob ← mod.olean.fetch
 
@@ -83,7 +83,7 @@ def buildModuleBlueprint (mod : Module) (ext : String) (extractArgs : Array Stri
   else
     -- Fall back to extract_blueprint for non-dressed builds
     let exeJob ← extract_blueprint.fetch
-    let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
+    let hlJob ← fetch <| mod.facet `dressed  -- Get cached dressed JSON
     let leanOptions := Lean.toJson mod.leanOptions |>.compress
     exeJob.bindM fun exeFile => do
       hlJob.bindM fun hlFile => do  -- Thread through highlighted JSON path
@@ -108,7 +108,7 @@ def buildModuleBlueprintSafe (mod : Module) (ext : String) : FetchM (Job Unit) :
     modJob.mapM fun _ => pure ()
   else
     let exeJob ← extract_blueprint.fetch
-    let hlJob ← fetch <| mod.facet `highlighted  -- Get cached highlighted JSON
+    let hlJob ← fetch <| mod.facet `dressed  -- Get cached dressed JSON
     let leanOptions := Lean.toJson mod.leanOptions |>.compress
     exeJob.bindM fun exeFile => do
       hlJob.bindM fun hlFile => do
