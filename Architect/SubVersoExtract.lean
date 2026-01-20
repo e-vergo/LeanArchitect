@@ -148,9 +148,9 @@ def extractHighlightingMap (moduleName : Name) (projectRoot? : Option FilePath :
   return buildHighlightingMap items
 
 /-- Compute the path for a module's highlighting JSON file.
-    Returns `.lake/build/highlighted/{Module/Path}.json`. -/
+    Returns `.lake/build/dressed/{Module/Path}.json`. -/
 def getHighlightingPath (buildDir : FilePath) (moduleName : Name) : FilePath :=
-  let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
+  let modulePath := moduleName.components.foldl (init := buildDir / "dressed")
     fun path component => path / component.toString
   modulePath.withExtension "json"
 

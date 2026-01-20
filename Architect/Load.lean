@@ -34,9 +34,9 @@ def runEnvOfImports (imports : Array Name) (options : Options) (x : CoreM α) : 
 
 /-- Outputs the blueprint of a module.
     If `highlightedJsonPath?` is provided, loads cached highlighting from that path.
-    Otherwise, tries to load from `.lake/build/highlighted/{Module/Path}.json` (Hook.lean output),
+    Otherwise, tries to load from `.lake/build/dressed/{Module/Path}.json` (Hook.lean output),
     falling back to calling subverso-extract-mod directly (slower).
-    Pre-rendered HTML is loaded from `.lake/build/highlighted/{Module/Path}.html.json` if available. -/
+    Pre-rendered HTML is loaded from `.lake/build/dressed/{Module/Path}.html.json` if available. -/
 def latexOutputOfImportModule (module : Name) (options : Options)
     (highlightedJsonPath? : Option String := none) : IO LatexOutput := do
   let buildDir : System.FilePath := ".lake" / "build"
@@ -51,7 +51,7 @@ def latexOutputOfImportModule (module : Name) (options : Options)
 
 /-- Outputs the JSON data for the blueprint of a module.
     If `highlightedJsonPath?` is provided, loads cached highlighting from that path.
-    Otherwise, tries to load from `.lake/build/highlighted/{Module/Path}.json` (Hook.lean output),
+    Otherwise, tries to load from `.lake/build/dressed/{Module/Path}.json` (Hook.lean output),
     falling back to calling subverso-extract-mod directly (slower). -/
 def jsonOfImportModule (module : Name) (options : Options)
     (highlightedJsonPath? : Option String := none) : IO Json := do

@@ -235,10 +235,10 @@ def getDressedOutputPath (buildDir : System.FilePath) (moduleName : Name) : Syst
     fun path component => path / component.toString
   modulePath.withExtension "json"
 
-/-- Get the output path for a module's highlighting JSON file (legacy path).
-    Returns `.lake/build/highlighted/{Module/Path}.json` -/
+/-- Get the output path for a module's highlighting JSON file.
+    Returns `.lake/build/dressed/{Module/Path}.json` -/
 def getHighlightingOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
-  let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
+  let modulePath := moduleName.components.foldl (init := buildDir / "dressed")
     fun path component => path / component.toString
   modulePath.withExtension "json"
 
@@ -257,16 +257,16 @@ def writeHighlightingJsonAtomic (path : System.FilePath) (json : Json) : IO Unit
   IO.FS.rename tmpPath path
 
 /-- Write all captured highlighting for a declaration to a JSON file.
-    The file is written to `.lake/build/highlighted/{Module/Path}/{DeclName}.json`. -/
+    The file is written to `.lake/build/dressed/{Module/Path}/{DeclName}.json`. -/
 def writeHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
     (declName : Name) (hl : Highlighted) : IO Unit := do
-  let moduleDir := moduleName.components.foldl (init := buildDir / "highlighted")
+  let moduleDir := moduleName.components.foldl (init := buildDir / "dressed")
     fun path component => path / component.toString
   let path := moduleDir / s!"{declName}.json"
   writeHighlightingJsonAtomic path (serializeHighlightedToJson hl)
 
 /-- Write all captured module highlighting to a single JSON file.
-    The file is written to `.lake/build/highlighted/{Module/Path}.json`. -/
+    The file is written to `.lake/build/dressed/{Module/Path}.json`. -/
 def writeModuleHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
     (highlighting : NameMap Highlighted) : IO Unit := do
   if highlighting.isEmpty then return
@@ -275,10 +275,10 @@ def writeModuleHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
 
 /-! ## HTML Serialization -/
 
-/-- Get the output path for a module's highlighting HTML map file (legacy path).
-    Returns `.lake/build/highlighted/{Module/Path}.html.json` -/
+/-- Get the output path for a module's highlighting HTML map file.
+    Returns `.lake/build/dressed/{Module/Path}.html.json` -/
 def getHighlightingHtmlOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
-  let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
+  let modulePath := moduleName.components.foldl (init := buildDir / "dressed")
     fun path component => path / component.toString
   modulePath.withExtension "html.json"
 
@@ -314,7 +314,7 @@ def serializeDressedArtifacts (highlighting : NameMap Highlighted) : Json :=
   Json.mkObj entries
 
 /-- Write all captured module highlighting as HTML to a JSON map file.
-    The file is written to `.lake/build/highlighted/{Module/Path}.html.json` (legacy path). -/
+    The file is written to `.lake/build/dressed/{Module/Path}.html.json`. -/
 def writeModuleHighlightingHtml (buildDir : System.FilePath) (moduleName : Name)
     (highlighting : NameMap Highlighted) : IO Unit := do
   if highlighting.isEmpty then return
@@ -414,10 +414,8 @@ def writeModuleHeader (moduleName : Name) : IO Unit := do
 /-- Export all captured artifacts for the current module.
     Call this when module compilation completes.
 
-    Writes to four locations:
-    - `.lake/build/dressed/{Module/Path}.json` - Full dressed artifacts (new format)
-    - `.lake/build/highlighted/{Module/Path}.json` - SubVerso JSON format (legacy)
-    - `.lake/build/highlighted/{Module/Path}.html.json` - Pre-rendered HTML map (legacy)
+    Writes to:
+    - `.lake/build/dressed/{Module/Path}.json` - Full dressed artifacts
     - `.lake/build/blueprint/module/{Module/Path}.tex` - Module header .tex file -/
 def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit := do
   let env ← getEnv
@@ -500,7 +498,7 @@ def exportIfDressEnabled : CommandElabM Unit := do
   exportModuleHighlighting buildDir
 
 /-- Export all captured blueprint highlighting for the current module.
-    Writes to `.lake/build/dressed/`, `.lake/build/highlighted/`, and `.lake/build/highlighted/*.html.json`. -/
+    Writes to `.lake/build/dressed/`. -/
 syntax (name := exportBlueprintHighlighting) "#export_blueprint_highlighting" : command
 
 @[command_elab exportBlueprintHighlighting]
@@ -532,7 +530,7 @@ def loadHighlightingFromJson (path : System.FilePath) : IO (NameMap Highlighted)
           acc'.insert name item.code
 
 /-- Load highlighting for a specific module from the build cache.
-    Looks for `.lake/build/highlighted/{Module/Path}.json`. -/
+    Looks for `.lake/build/dressed/{Module/Path}.json`. -/
 def loadModuleHighlighting (buildDir : System.FilePath) (moduleName : Name)
     : IO (NameMap Highlighted) := do
   let path := getHighlightingOutputPath buildDir moduleName
@@ -558,7 +556,7 @@ def loadHighlightingHtmlFromJson (path : System.FilePath) : IO (NameMap String) 
     | _ => return {}
 
 /-- Load pre-rendered HTML highlighting for a specific module from the build cache.
-    Looks for `.lake/build/highlighted/{Module/Path}.html.json`. -/
+    Looks for `.lake/build/dressed/{Module/Path}.html.json`. -/
 def loadModuleHighlightingHtml (buildDir : System.FilePath) (moduleName : Name)
     : IO (NameMap String) := do
   let path := getHighlightingHtmlOutputPath buildDir moduleName

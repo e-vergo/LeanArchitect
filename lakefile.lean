@@ -33,10 +33,10 @@ require subverso from git
 require verso from git
   "https://github.com/leanprover/verso.git" @ "main"
 
-/-- Facet that provides highlighted JSON for a module.
+/-- Facet that provides dressed JSON for a module.
 
     **New behavior (preferred):** If the module imports `Architect`, highlighting is captured
-    during elaboration via Hook.lean and written to `.lake/build/highlighted/{Module/Path}.json`.
+    during elaboration via Hook.lean and written to `.lake/build/dressed/{Module/Path}.json`.
     This facet simply waits for the olean to be built and returns the JSON path.
 
     **Fallback behavior:** If the JSON file doesn't exist after olean compilation (module doesn't
@@ -50,7 +50,7 @@ module_facet highlighted (mod : Module) : FilePath := do
 
   let buildDir := ws.root.buildDir
   -- Use full module name path to match Hook.lean's getHighlightingOutputPath
-  let hlFile := mod.name.components.foldl (init := buildDir / "highlighted")
+  let hlFile := mod.name.components.foldl (init := buildDir / "dressed")
     fun path component => path / component.toString |>.withExtension "json"
 
   modJob.mapM fun _oleanFile => do
@@ -64,7 +64,7 @@ module_facet highlighted (mod : Module) : FilePath := do
         | error "subverso-extract-mod executable not found"
       let exeFile ← extract.exe.fetch >>= (·.await)
       buildFileUnlessUpToDate' hlFile do
-        IO.FS.createDirAll (buildDir / "highlighted")
+        IO.FS.createDirAll (buildDir / "dressed")
         proc {
           cmd := exeFile.toString
           args := #[mod.name.toString, hlFile.toString]
