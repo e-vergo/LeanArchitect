@@ -50,8 +50,8 @@ module_facet dressed (mod : Module) : FilePath := do
 
   let buildDir := ws.root.buildDir
   -- Use full module name path to match Hook.lean's getHighlightingOutputPath
-  let hlFile := mod.name.components.foldl (init := buildDir / "dressed")
-    fun path component => path / component.toString |>.withExtension "json"
+  let hlFile := (mod.name.components.foldl (init := buildDir / "dressed")
+    fun path component => path / component.toString).withExtension "json"
 
   modJob.mapM fun _oleanFile => do
     -- Check if JSON was written during elaboration (by Hook.lean)
