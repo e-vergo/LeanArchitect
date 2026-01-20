@@ -279,16 +279,19 @@ def blueprintHighlightingLinter : Linter where
     -- Skip if highlighting is disabled
     unless blueprint.highlighting.get (← getOptions) do return
 
-    -- Get names defined by this command
+    -- Get names defined by this command (unqualified)
     let declNames := getDeclNamesFromSyntax stx
 
     -- For each name, check if it has @[blueprint] and capture highlighting
     let env ← getEnv
+    let currNamespace ← getCurrNamespace
     for declName in declNames do
+      -- Resolve to fully qualified name
+      let fullName := currNamespace ++ declName
       -- Check if this declaration is in the blueprint extension
-      if blueprintExt.getState env |>.contains declName then
+      if blueprintExt.getState env |>.contains fullName then
         -- Capture highlighting for this declaration
-        captureHighlighting declName stx
+        captureHighlighting fullName stx
 
 /-- Register the blueprint highlighting linter at initialization. -/
 initialize Elab.Command.addLinter blueprintHighlightingLinter
