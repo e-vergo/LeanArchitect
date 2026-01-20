@@ -785,22 +785,27 @@ def generateDeclarationTex (name : Name) (config : BlueprintConfig)
     let posStr := s!"{f}|{loc.pos.line}|{loc.pos.column}|{loc.endPos.line}|{loc.endPos.column}"
     out := out ++ s!"\\leanposition\{{posStr}}\n"
 
-  -- Embed syntax highlighting data (base64-encoded HTML)
+  -- Embed syntax highlighting data (base64-encoded HTML) with hover info
   if let some hl := highlighting then
     -- Split into signature and proof body
     let hasProof := config.proof.isSome
     let (sigHl, bodyHl) := splitAtDefinitionAssign hl (splitAtAssign := hasProof)
 
-    -- Render signature to HTML and base64 encode
-    let sigHtml := HtmlRender.renderHighlightedToHtml sigHl
+    -- Render signature to HTML with hovers and base64 encode
+    let (sigHtml, sigHoverJson) := HtmlRender.renderHighlightedWithHovers sigHl
     let sigBase64 := stringToBase64 sigHtml
     out := out ++ s!"\\leansignaturesourcehtml\{{sigBase64}}\n"
 
-    -- Render proof body if present
+    -- Render proof body if present (hovers not used - separate ID space would conflict)
     if let some proofHl := bodyHl then
       let proofHtml := HtmlRender.renderHighlightedToHtml proofHl
       let proofBase64 := stringToBase64 proofHtml
       out := out ++ s!"\\leanproofsourcehtml\{{proofBase64}}\n"
+
+    -- Emit signature hover data as base64-encoded JSON
+    -- (Signature hovers are most useful - variable types, constant docs)
+    let hoverBase64 := stringToBase64 sigHoverJson
+    out := out ++ s!"\\leanhoverdata\{{hoverBase64}}\n"
 
   -- Uses (from config, not inferred)
   unless config.usesLabels.isEmpty do

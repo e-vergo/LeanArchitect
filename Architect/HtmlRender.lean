@@ -21,12 +21,11 @@ open Verso.Output
 
 namespace Architect.HtmlRender
 
-/-- Render highlighted code to HTML string using Verso's production-quality renderer.
+/-- Render highlighted code to HTML string and hover data JSON.
 
-Uses `Genre.none` with empty `LinkTargets` (no hyperlinks) and default options.
-This provides syntax highlighting without interactive features like hovers or links.
+Returns (html, hoverJson) where hoverJson maps hover IDs to their content.
 -/
-def renderHighlightedToHtml (hl : SubVerso.Highlighting.Highlighted) : String :=
+def renderHighlightedWithHovers (hl : SubVerso.Highlighting.Highlighted) : String × String :=
   let linkTargets : LinkTargets Unit := {}
   let context : HighlightHtmlM.Context Genre.none := {
     linkTargets := linkTargets
@@ -35,8 +34,17 @@ def renderHighlightedToHtml (hl : SubVerso.Highlighting.Highlighted) : String :=
     options := {}
   }
   let initialState : Hover.State Html := .empty
-  let (html, _finalState) := (hl.toHtml).run context |>.run initialState
-  html.asString (breakLines := false)
+  let (html, finalState) := (hl.toHtml).run context |>.run initialState
+  let hoverJson := finalState.dedup.docJson.compress
+  (html.asString (breakLines := false), hoverJson)
+
+/-- Render highlighted code to HTML string using Verso's production-quality renderer.
+
+Uses `Genre.none` with empty `LinkTargets` (no hyperlinks) and default options.
+This provides syntax highlighting without interactive features like hovers or links.
+-/
+def renderHighlightedToHtml (hl : SubVerso.Highlighting.Highlighted) : String :=
+  (renderHighlightedWithHovers hl).1
 
 /-- Render highlighted code wrapped in a code element with appropriate CSS classes.
 
