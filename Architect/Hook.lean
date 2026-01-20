@@ -925,10 +925,14 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) (mods : Opti
           exportModuleHighlighting buildDir
 
           -- Generate and write .tex file if mods are available
+          IO.eprintln s!"[blueprint] Checking .tex generation for {resolvedName}"
           if let some modsStx := mods then
+            IO.eprintln s!"[blueprint] modsStx found"
             if let some attrStx := extractBlueprintAttrSyntax modsStx then
+              IO.eprintln s!"[blueprint] attrStx found, parsing config..."
               try
                 let config ← parseBlueprintConfig attrStx
+                IO.eprintln s!"[blueprint] Config parsed: label={config.latexLabel}, statement={config.statement.isSome}"
                 trace[blueprint] "Config for {resolvedName}: label={config.latexLabel}, statement={config.statement.isSome}, proof={config.proof.isSome}, latexEnv={config.latexEnv}"
 
                 -- Get highlighting from extension (just captured above)
@@ -955,9 +959,15 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) (mods : Opti
                 -- Track for module header generation
                 texGeneratedDeclsRef.modify (·.push (resolvedName, latexLabel))
 
+                IO.eprintln s!"[blueprint] Wrote .tex for {resolvedName} with label {latexLabel}"
                 trace[blueprint] "Wrote .tex for {resolvedName} with label {latexLabel}"
               catch e =>
+                IO.eprintln s!"[blueprint] Failed to generate .tex: {← e.toMessageData.toString}"
                 trace[blueprint.debug] "Failed to generate .tex: {e.toMessageData}"
+            else
+              IO.eprintln s!"[blueprint] attrStx extraction failed"
+          else
+            IO.eprintln s!"[blueprint] modsStx is none"
 
 /-- Elaboration rules for declarations with @[blueprint] attribute.
     These intercept declarations and capture highlighting after elaboration.
