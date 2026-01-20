@@ -686,36 +686,46 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
     -- Each option is wrapped in ppSpace, the actual option is inside
     if optWrapper.isNone then continue
     let opt := optWrapper[0]!
-    -- blueprintOption = "(" ... ")"
-    -- The inner content identifies which option it is
-    let optKind := opt.getKind
+    -- blueprintOption = "(" innerOption ")"
+    -- opt[0] = "(", opt[1] = innerOption, opt[2] = ")"
+    if let some innerOpt := opt[1]? then
+      let innerKind := innerOpt.getKind
 
-    -- Parse based on option kind
-    -- blueprintLatexLabelOption: "latexLabel" " := " str
-    if optKind == `Architect.blueprintLatexLabelOption then
-      if let some strStx := opt[2]? then
-        if let some label := strStx.isStrLit? then
-          config := { config with latexLabel := some label }
-    -- blueprintLatexEnvOption: "latexEnv" " := " str
-    else if optKind == `Architect.blueprintLatexEnvOption then
-      if let some strStx := opt[2]? then
-        if let some env := strStx.isStrLit? then
-          config := { config with latexEnv := some env }
-    -- blueprintStatementOption: "statement" " := " plainDocComment
-    else if optKind == `Architect.blueprintStatementOption then
-      if let some docStx := opt[2]? then
-        -- plainDocComment has the text we need
-        let text := docStx.getSubstring?.map (·.toString) |>.getD ""
-        if !text.isEmpty then
-          config := { config with statement := some text }
-    -- blueprintProofOption: "proof" " := " plainDocComment
-    else if optKind == `Architect.blueprintProofOption then
-      if let some docStx := opt[2]? then
-        let text := docStx.getSubstring?.map (·.toString) |>.getD ""
-        if !text.isEmpty then
-          config := { config with proof := some text }
-    -- For other options, we skip for now as they're not essential for .tex generation
-    -- (uses, proofUses require name resolution which is complex)
+      -- Parse based on inner option kind
+      -- blueprintLatexLabelOption: "latexLabel" " := " str
+      if innerKind == `Architect.blueprintLatexLabelOption then
+        if let some strStx := innerOpt[2]? then
+          if let some label := strStx.isStrLit? then
+            config := { config with latexLabel := some label }
+      -- blueprintLatexEnvOption: "latexEnv" " := " str
+      else if innerKind == `Architect.blueprintLatexEnvOption then
+        if let some strStx := innerOpt[2]? then
+          if let some env := strStx.isStrLit? then
+            config := { config with latexEnv := some env }
+      -- blueprintStatementOption: "statement" " := " plainDocComment
+      else if innerKind == `Architect.blueprintStatementOption then
+        if let some docStx := innerOpt[2]? then
+          -- plainDocComment is a doc comment like /-- ... -/
+          let text := docStx.getSubstring?.map (·.toString) |>.getD ""
+          if !text.isEmpty then
+            -- Strip /-- and -/ markers using substring extraction
+            let text := text.trim
+            let text := if text.length > 6 then
+              text.extract ⟨3⟩ ⟨text.length - 2⟩  -- Skip "/--" and "-/"
+            else text
+            config := { config with statement := some text.trim }
+      -- blueprintProofOption: "proof" " := " plainDocComment
+      else if innerKind == `Architect.blueprintProofOption then
+        if let some docStx := innerOpt[2]? then
+          let text := docStx.getSubstring?.map (·.toString) |>.getD ""
+          if !text.isEmpty then
+            let text := text.trim
+            let text := if text.length > 6 then
+              text.extract ⟨3⟩ ⟨text.length - 2⟩
+            else text
+            config := { config with proof := some text.trim }
+      -- For other options, we skip for now as they're not essential for .tex generation
+      -- (uses, proofUses require name resolution which is complex)
 
   return config
 
@@ -829,15 +839,24 @@ def writeDeclarationTex (moduleName : Name) (latexLabel : String) (texContent : 
   -- Sanitize label for filesystem (replace : with -)
   let sanitizedLabel := latexLabel.replace ":" "-"
 
-  -- Build path: .lake/build/blueprint/module/{Module/Path}.artifacts/{label}.tex
-  let modulePath := moduleName.components.foldl (init := buildDir / "blueprint" / "module")
-    fun path component => path / component.toString
-  let artifactsDir := modulePath.addExtension "artifacts"
-  let texPath := artifactsDir / (sanitizedLabel ++ ".tex")
+  -- Build module path components
+  let modulePathComponents := moduleName.components.map (·.toString)
 
-  -- Create directory and write file
-  IO.FS.createDirAll artifactsDir
-  IO.FS.writeFile texPath texContent
+  -- Write to .lake/build/blueprint/module/{Module/Path}.artifacts/{label}.tex
+  let blueprintModulePath := modulePathComponents.foldl (init := buildDir / "blueprint" / "module")
+    fun path component => path / component
+  let blueprintArtifactsDir := blueprintModulePath.addExtension "artifacts"
+  let blueprintTexPath := blueprintArtifactsDir / (sanitizedLabel ++ ".tex")
+  IO.FS.createDirAll blueprintArtifactsDir
+  IO.FS.writeFile blueprintTexPath texContent
+
+  -- Also write to .lake/build/dressed/{Module/Path}.artifacts/{label}.tex
+  let dressedModulePath := modulePathComponents.foldl (init := buildDir / "dressed")
+    fun path component => path / component
+  let dressedArtifactsDir := dressedModulePath.addExtension "artifacts"
+  let dressedTexPath := dressedArtifactsDir / (sanitizedLabel ++ ".tex")
+  IO.FS.createDirAll dressedArtifactsDir
+  IO.FS.writeFile dressedTexPath texContent
 
 /-- Extract declaration name from a declId syntax node. -/
 def getDeclNameFromDeclId (declId : Syntax) : Option Name :=
