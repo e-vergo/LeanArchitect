@@ -410,7 +410,7 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
 
 -- Theorem declarations with @[blueprint]
 -- Use high priority to run before built-in elaborators
-@[command_elab Lean.Parser.Command.declaration, inherit_doc]
+@[command_elab Lean.Parser.Command.declaration]
 def elabBlueprintTheorem : CommandElab := fun stx => do
   trace[blueprint.debug] "elabBlueprintTheorem called"
   -- Only handle theorem declarations
