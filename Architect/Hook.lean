@@ -409,18 +409,26 @@ def elabDeclAndCaptureHighlighting (stx : Syntax) (declId : Syntax) : CommandEla
 -/
 
 -- Theorem declarations with @[blueprint]
-elab_rules : command
-  | `($mods:declModifiers theorem $declId:declId $_sig:declSig $_val:declVal) => do
-    trace[blueprint.debug] "elab_rules matched theorem pattern"
-    if (← inCaptureHook) then
-      trace[blueprint.debug] "  inCaptureHook=true, skipping"
-      throwUnsupportedSyntax
-    let hasBlueprint := hasBlueprintAttr mods
-    trace[blueprint.debug] "  hasBlueprint={hasBlueprint}"
-    if hasBlueprint then
-      elabDeclAndCaptureHighlighting (← getRef) declId
-    else
-      throwUnsupportedSyntax
+-- Use high priority to run before built-in elaborators
+@[command_elab Lean.Parser.Command.declaration, inherit_doc]
+def elabBlueprintTheorem : CommandElab := fun stx => do
+  trace[blueprint.debug] "elabBlueprintTheorem called"
+  -- Only handle theorem declarations
+  unless stx.getKind == ``Lean.Parser.Command.declaration do
+    throwUnsupportedSyntax
+  let decl := stx[1]
+  unless decl.getKind == ``Lean.Parser.Command.theorem do
+    throwUnsupportedSyntax
+  if (← inCaptureHook) then
+    throwUnsupportedSyntax
+  let mods := stx[0]
+  let hasBlueprint := hasBlueprintAttr mods
+  trace[blueprint.debug] "  hasBlueprint={hasBlueprint}"
+  if hasBlueprint then
+    let declId := decl[1]
+    elabDeclAndCaptureHighlighting stx declId
+  else
+    throwUnsupportedSyntax
 
 -- Definition declarations with @[blueprint]
 elab_rules : command
