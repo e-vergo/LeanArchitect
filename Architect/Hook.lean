@@ -691,6 +691,7 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
     -- opt[0] = "(", opt[1] = innerOption, opt[2] = ")"
     if let some innerOpt := opt[1]? then
       let innerKind := innerOpt.getKind
+      trace[blueprint.debug] "Option kind: {innerKind}"
 
       -- Parse based on inner option kind
       -- blueprintLatexLabelOption: "latexLabel" " := " str
