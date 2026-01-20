@@ -366,6 +366,15 @@ def debugPrintAttrSyntax (mods : Syntax) : IO Unit := do
       IO.println s!"[DEBUG] attrInstances.numArgs = {attrInstances.getArgs.size}"
       for attrInst in attrInstances.getArgs do
         IO.println s!"[DEBUG]   attrInst.kind = {attrInst.getKind}"
+        IO.println s!"[DEBUG]   attrInst.numArgs = {attrInst.getNumArgs}"
+        -- Drill down into attrInstance to find the actual attribute
+        for j in [:attrInst.getNumArgs] do
+          let child := attrInst[j]!
+          IO.println s!"[DEBUG]     attrInst[{j}].kind = {child.getKind}, getId = {child.getId}"
+          -- Go one more level
+          for k in [:child.getNumArgs] do
+            let grandchild := child[k]!
+            IO.println s!"[DEBUG]       attrInst[{j}][{k}].kind = {grandchild.getKind}, getId = {grandchild.getId}"
 
 /-- Check if declModifiers syntax contains a `@[blueprint ...]` attribute.
 
