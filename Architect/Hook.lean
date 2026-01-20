@@ -343,39 +343,6 @@ The key insight is that `elab_rules` run before the standard elaborators, and we
 call the standard elaborator explicitly, then capture highlighting afterward.
 -/
 
-/-- Debug helper to print syntax structure -/
-def debugPrintAttrSyntax (mods : Syntax) : IO Unit := do
-  IO.println s!"[DEBUG] mods.kind = {mods.getKind}"
-  IO.println s!"[DEBUG] mods.numArgs = {mods.getNumArgs}"
-  for i in [:mods.getNumArgs] do
-    let child := mods[i]!
-    IO.println s!"[DEBUG]   mods[{i}].kind = {child.getKind}, isNone={child.isNone}"
-  let attrs? := mods[1]?
-  match attrs? with
-  | none => IO.println "[DEBUG] No attrs at mods[1]"
-  | some attrs =>
-    IO.println s!"[DEBUG] attrs.kind = {attrs.getKind}, isNone={attrs.isNone}"
-    if !attrs.isNone then
-      let attrsNode := attrs[0]!
-      IO.println s!"[DEBUG] attrsNode.kind = {attrsNode.getKind}"
-      IO.println s!"[DEBUG] attrsNode.numArgs = {attrsNode.getNumArgs}"
-      for i in [:attrsNode.getNumArgs] do
-        let child := attrsNode[i]!
-        IO.println s!"[DEBUG]   attrsNode[{i}].kind = {child.getKind}"
-      let attrInstances := attrsNode[1]!
-      IO.println s!"[DEBUG] attrInstances.numArgs = {attrInstances.getArgs.size}"
-      for attrInst in attrInstances.getArgs do
-        IO.println s!"[DEBUG]   attrInst.kind = {attrInst.getKind}"
-        IO.println s!"[DEBUG]   attrInst.numArgs = {attrInst.getNumArgs}"
-        -- Drill down into attrInstance to find the actual attribute
-        for j in [:attrInst.getNumArgs] do
-          let child := attrInst[j]!
-          IO.println s!"[DEBUG]     attrInst[{j}].kind = {child.getKind}, getId = {child.getId}"
-          -- Go one more level
-          for k in [:child.getNumArgs] do
-            let grandchild := child[k]!
-            IO.println s!"[DEBUG]       attrInst[{j}][{k}].kind = {grandchild.getKind}, getId = {grandchild.getId}"
-
 /-- Check if declModifiers syntax contains a `@[blueprint ...]` attribute.
 
     The syntax structure is:
@@ -397,15 +364,12 @@ def hasBlueprintAttr (mods : Syntax) : Bool :=
       -- attrsNode[1] is the SepArray of attrInstance
       let attrInstances := attrsNode[1]!
       attrInstances.getArgs.any fun attrInst =>
-        -- Check if this is a blueprint attribute by syntax kind
-        let kind := attrInst.getKind
-        kind == `Architect.blueprint ||
-        kind == `blueprint ||
-        -- Also check first child for simple attributes
-        (attrInst[0]?.map (·.getKind == `Architect.blueprint) |>.getD false) ||
-        (attrInst[0]?.map (·.getKind == `blueprint) |>.getD false) ||
-        -- Check if first ident is `blueprint`
-        (attrInst[0]?.bind (·[0]?) |>.map (·.getId == `blueprint) |>.getD false)
+        -- attrInst structure:
+        --   attrInst[0] = attrKind (scoped/local/global)
+        --   attrInst[1] = the actual attribute (kind = Architect.blueprint for @[blueprint ...])
+        -- Check attrInst[1].kind for the attribute name
+        (attrInst[1]?.map (·.getKind == `Architect.blueprint) |>.getD false) ||
+        (attrInst[1]?.map (·.getKind == `blueprint) |>.getD false)
 
 /-- Extract declaration name from a declId syntax node. -/
 def getDeclNameFromDeclId (declId : Syntax) : Option Name :=
@@ -466,8 +430,6 @@ def elabBlueprintDeclaration : CommandElab := fun stx => do
   if (← inCaptureHook) then
     throwUnsupportedSyntax
   let mods := stx[0]
-  -- Debug: print syntax structure for first theorem we see
-  debugPrintAttrSyntax mods
   let hasBlueprint := hasBlueprintAttr mods
   trace[blueprint.debug] "elabBlueprintDeclaration: hasBlueprint={hasBlueprint}"
   if hasBlueprint then
