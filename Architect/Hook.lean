@@ -668,16 +668,6 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
   if optsNode.isNone then return config
   let optsNode := optsNode.get!
 
-  -- Debug: print syntax structure
-  dbg_trace s!"optsNode.getNumArgs = {optsNode.getNumArgs}"
-  for i in [0:optsNode.getNumArgs] do
-    let child := optsNode[i]!
-    dbg_trace s!"optsNode[{i}].getKind = {child.getKind}, isNone = {child.isNone}, numArgs = {child.getNumArgs}"
-    -- Print grandchildren
-    for j in [0:child.getNumArgs] do
-      let grandchild := child[j]!
-      dbg_trace s!"  optsNode[{i}][{j}].getKind = {grandchild.getKind}"
-
   -- blueprintOptions = (ppSpace str)? (ppSpace blueprintOption)*
   -- optsNode[0] = optional label string
   -- optsNode[1..] = blueprintOption nodes
@@ -695,15 +685,12 @@ def parseBlueprintConfig (attrStx : Syntax) : CommandElabM BlueprintConfig := do
   -- (the * in the syntax creates a single node with multiple children)
   if let some optsWrapper := optsNode[1]? then
     if !optsWrapper.isNone then
-      dbg_trace s!"optsWrapper.getNumArgs = {optsWrapper.getNumArgs}"
       for j in [0:optsWrapper.getNumArgs] do
         let opt := optsWrapper[j]!
-        dbg_trace s!"  opt[{j}].getKind = {opt.getKind}, numArgs = {opt.getNumArgs}"
         -- blueprintOption = "(" innerOption ")"
         -- opt[0] = "(", opt[1] = innerOption, opt[2] = ")"
         if let some innerOpt := opt[1]? then
           let innerKind := innerOpt.getKind
-          dbg_trace s!"    innerOpt.getKind = {innerKind}"
 
           -- Parse based on inner option kind
           -- blueprintLatexLabelOption: "latexLabel" " := " str
