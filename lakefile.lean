@@ -30,6 +30,9 @@ require Cli from git
 require subverso from git
   "https://github.com/leanprover/subverso"
 
+require verso from git
+  "https://github.com/leanprover/verso.git" @ "main"
+
 /-- Facet that provides highlighted JSON for a module.
 
     **New behavior (preferred):** If the module imports `Architect`, highlighting is captured

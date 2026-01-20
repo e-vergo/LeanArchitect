@@ -5,6 +5,7 @@ import Architect.Command
 import Architect.Content
 import Architect.Highlighting
 import Architect.Hook
+import Architect.HtmlRender
 import Architect.Load
 import Architect.Output
 import Architect.SubVersoExtract

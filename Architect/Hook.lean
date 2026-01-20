@@ -7,6 +7,7 @@ import Batteries.Lean.NameMapAttribute
 import SubVerso.Highlighting
 import SubVerso.Module
 import Architect.Highlighting
+import Architect.HtmlRender
 
 /-!
 # Elaboration-Time Highlighting Capture Infrastructure
@@ -191,10 +192,38 @@ def writeModuleHighlightingJson (buildDir : System.FilePath) (moduleName : Name)
   let path := getHighlightingOutputPath buildDir moduleName
   writeHighlightingJsonAtomic path (serializeHighlightingMapToJson highlighting)
 
+/-! ## HTML Serialization -/
+
+/-- Get the output path for a module's highlighting HTML map file.
+    Returns `.lake/build/highlighted/{Module/Path}.html.json` -/
+def getHighlightingHtmlOutputPath (buildDir : System.FilePath) (moduleName : Name) : System.FilePath :=
+  let modulePath := moduleName.components.foldl (init := buildDir / "highlighted")
+    fun path component => path / component.toString
+  modulePath.withExtension "html.json"
+
+/-- Serialize a NameMap of Highlighted values to a JSON map of declaration name → HTML string.
+    This format allows Output.lean to directly embed pre-rendered HTML. -/
+def serializeHighlightingMapToHtmlJson (highlighting : NameMap Highlighted) : Json :=
+  let entries : List (String × Json) := highlighting.toList.map fun (name, hl) =>
+    (name.toString, Json.str (HtmlRender.renderHighlightedToHtml hl))
+  Json.mkObj entries
+
+/-- Write all captured module highlighting as HTML to a JSON map file.
+    The file is written to `.lake/build/highlighted/{Module/Path}.html.json`. -/
+def writeModuleHighlightingHtml (buildDir : System.FilePath) (moduleName : Name)
+    (highlighting : NameMap Highlighted) : IO Unit := do
+  if highlighting.isEmpty then return
+  let path := getHighlightingHtmlOutputPath buildDir moduleName
+  writeHighlightingJsonAtomic path (serializeHighlightingMapToHtmlJson highlighting)
+
 /-! ## Module Finalization -/
 
-/-- Export all captured highlighting for the current module to JSON.
-    Call this when module compilation completes. -/
+/-- Export all captured highlighting for the current module to JSON and HTML.
+    Call this when module compilation completes.
+
+    Writes both:
+    - `.lake/build/highlighted/{Module/Path}.json` - SubVerso JSON format (backward compat)
+    - `.lake/build/highlighted/{Module/Path}.html.json` - Pre-rendered HTML map -/
 def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit := do
   let env ← getEnv
   let moduleName := env.header.mainModule
@@ -206,12 +235,19 @@ def exportModuleHighlighting (buildDir : System.FilePath) : CommandElabM Unit :=
 
   trace[blueprint] "Exporting {highlighting.size} highlighted declarations for {moduleName}"
 
+  -- Write JSON format (backward compatibility with subverso-extract-mod)
   try
     writeModuleHighlightingJson buildDir moduleName highlighting
     trace[blueprint] "Wrote highlighting JSON for {moduleName}"
   catch _ =>
-    -- Log but don't fail compilation
     trace[blueprint.debug] "Failed to write highlighting JSON for {moduleName}"
+
+  -- Write HTML format (pre-rendered for fast plasTeX processing)
+  try
+    writeModuleHighlightingHtml buildDir moduleName highlighting
+    trace[blueprint] "Wrote highlighting HTML for {moduleName}"
+  catch _ =>
+    trace[blueprint.debug] "Failed to write highlighting HTML for {moduleName}"
 
 /-! ## Export Command -/
 
@@ -266,5 +302,31 @@ def loadModuleHighlighting (buildDir : System.FilePath) (moduleName : Name)
     : IO (NameMap Highlighted) := do
   let path := getHighlightingOutputPath buildDir moduleName
   loadHighlightingFromJson path
+
+/-- Load pre-rendered HTML highlighting from a JSON map file.
+    Returns a NameMap of declaration name → HTML string.
+    Returns empty map if file doesn't exist or parsing fails. -/
+def loadHighlightingHtmlFromJson (path : System.FilePath) : IO (NameMap String) := do
+  if !(← path.pathExists) then
+    return {}
+
+  let contents ← IO.FS.readFile path
+  match Json.parse contents with
+  | .error _ => return {}
+  | .ok json =>
+    match json with
+    | .obj kvs =>
+      return kvs.toList.foldl (init := {}) fun acc (key, val) =>
+        match val with
+        | .str html => acc.insert key.toName html
+        | _ => acc
+    | _ => return {}
+
+/-- Load pre-rendered HTML highlighting for a specific module from the build cache.
+    Looks for `.lake/build/highlighted/{Module/Path}.html.json`. -/
+def loadModuleHighlightingHtml (buildDir : System.FilePath) (moduleName : Name)
+    : IO (NameMap String) := do
+  let path := getHighlightingHtmlOutputPath buildDir moduleName
+  loadHighlightingHtmlFromJson path
 
 end Architect

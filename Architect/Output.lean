@@ -1,6 +1,7 @@
 import Architect.CollectUsed
 import Architect.Content
 import Architect.Tactic
+import Architect.HtmlRender
 
 
 open Lean
@@ -180,19 +181,34 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     let proofPosStr := s!"{file}|{proofLoc.pos.line}|{proofLoc.pos.column}|{proofLoc.endPos.line}|{proofLoc.endPos.column}"
     addLatex := addLatex ++ "\\leanproofposition{" ++ proofPosStr ++ "}\n"
   if let some hl := node.highlightedCode then
+    -- JSON format (backward compatibility)
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leansource{" ++ base64Json ++ "}\n"
+    -- HTML format (pre-rendered for fast plasTeX processing)
+    let htmlStr := HtmlRender.renderHighlightedToHtml hl
+    let base64Html := stringToBase64 htmlStr
+    addLatex := addLatex ++ "\\leansourcehtml{" ++ base64Html ++ "}\n"
   -- Emit signature highlighting
   if let some hl := node.highlightedSignature then
+    -- JSON format (backward compatibility)
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leansignaturesource{" ++ base64Json ++ "}\n"
+    -- HTML format (pre-rendered for fast plasTeX processing)
+    let htmlStr := HtmlRender.renderHighlightedToHtml hl
+    let base64Html := stringToBase64 htmlStr
+    addLatex := addLatex ++ "\\leansignaturesourcehtml{" ++ base64Html ++ "}\n"
   -- Emit proof body highlighting
   if let some hl := node.highlightedProofBody then
+    -- JSON format (backward compatibility)
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leanproofsource{" ++ base64Json ++ "}\n"
+    -- HTML format (pre-rendered for fast plasTeX processing)
+    let htmlStr := HtmlRender.renderHighlightedToHtml hl
+    let base64Html := stringToBase64 htmlStr
+    addLatex := addLatex ++ "\\leanproofsourcehtml{" ++ base64Html ++ "}\n"
 
   let inferredUsess ← allNodes.mapM (·.inferUses)
   let statementUses := InferredUses.merge (inferredUsess.map (·.1))
