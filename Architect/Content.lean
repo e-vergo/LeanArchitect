@@ -45,14 +45,16 @@ def getMainModuleBlueprintContents : CoreM (Array BlueprintContent) := do
 
 /-- Get blueprint contents of an imported module.
     Highlighted code is obtained from the provided map (from subverso-extract-mod),
-    with fallback to the Hook mechanism during elaboration. -/
+    with fallback to the Hook mechanism during elaboration.
+    Pre-rendered HTML is obtained from the htmlMap (from .html.json files). -/
 def getBlueprintContents (module : Name)
     (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    (htmlMap : NameMap String := {})
     : CoreM (Array BlueprintContent) := do
   let env ← getEnv
   let some modIdx := env.getModuleIdx? module | return #[]
   let nodes ← (blueprintExt.getModuleEntries env modIdx).mapM fun (_, node) =>
-    BlueprintContent.node <$> node.toNodeWithPos highlightingMap
+    BlueprintContent.node <$> node.toNodeWithPos highlightingMap htmlMap
   let modDocs := (getModuleBlueprintDoc? env module).getD #[] |>.map BlueprintContent.modDoc
   return (nodes ++ modDocs).qsort BlueprintContent.order
 

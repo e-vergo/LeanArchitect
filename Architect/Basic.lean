@@ -62,6 +62,12 @@ structure NodeWithPos extends Node where
   highlightedSignature : Option SubVerso.Highlighting.Highlighted := none
   /-- SubVerso highlighted code for just the proof body (after `:=`). -/
   highlightedProofBody : Option SubVerso.Highlighting.Highlighted := none
+  /-- Pre-rendered HTML for the full declaration (from .html.json). -/
+  htmlCode : Option String := none
+  /-- Pre-rendered HTML for the signature (split from htmlCode). -/
+  htmlSignature : Option String := none
+  /-- Pre-rendered HTML for the proof body (split from htmlCode). -/
+  htmlProofBody : Option String := none
 deriving Inhabited, Repr
 
 /-- Environment extension that stores the nodes of the blueprint. -/
@@ -201,9 +207,11 @@ def splitAtDefinitionAssign (hl : Highlighted) (splitAtAssign : Bool := true)
 
 /-- Convert a Node to NodeWithPos, looking up position and highlighted code information.
     Highlighted code is looked up from `highlightingMap` (from subverso-extract-mod) first,
-    then falls back to the environment extension (Hook mechanism during elaboration). -/
+    then falls back to the environment extension (Hook mechanism during elaboration).
+    Pre-rendered HTML is looked up from `htmlMap` (from .html.json files). -/
 def Node.toNodeWithPos (node : Node)
     (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    (htmlMap : NameMap String := {})
     : CoreM NodeWithPos := do
   let env ← getEnv
   if !env.contains node.name then
@@ -251,9 +259,13 @@ def Node.toNodeWithPos (node : Node)
       (some sig, body)
     | none => (none, none)
 
+  -- Get pre-rendered HTML from the htmlMap (from .html.json files)
+  let htmlCode := htmlMap.find? node.name
+
   return { node with
     hasLean := true, location, proofLocation, file,
-    highlightedCode, highlightedSignature, highlightedProofBody }
+    highlightedCode, highlightedSignature, highlightedProofBody,
+    htmlCode }
 
 section ResolveConst
 

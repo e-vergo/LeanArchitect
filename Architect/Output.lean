@@ -2,6 +2,7 @@ import Architect.CollectUsed
 import Architect.Content
 import Architect.Tactic
 import Architect.HtmlRender
+import Architect.Hook
 
 
 open Lean
@@ -185,8 +186,8 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leansource{" ++ base64Json ++ "}\n"
-    -- HTML format (pre-rendered for fast plasTeX processing)
-    let htmlStr := HtmlRender.renderHighlightedToHtml hl
+    -- HTML format: use pre-rendered if available, otherwise render on demand
+    let htmlStr := node.htmlCode.getD (HtmlRender.renderHighlightedToHtml hl)
     let base64Html := stringToBase64 htmlStr
     addLatex := addLatex ++ "\\leansourcehtml{" ++ base64Html ++ "}\n"
   -- Emit signature highlighting
@@ -195,8 +196,8 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leansignaturesource{" ++ base64Json ++ "}\n"
-    -- HTML format (pre-rendered for fast plasTeX processing)
-    let htmlStr := HtmlRender.renderHighlightedToHtml hl
+    -- HTML format: use pre-rendered if available, otherwise render on demand
+    let htmlStr := node.htmlSignature.getD (HtmlRender.renderHighlightedToHtml hl)
     let base64Html := stringToBase64 htmlStr
     addLatex := addLatex ++ "\\leansignaturesourcehtml{" ++ base64Html ++ "}\n"
   -- Emit proof body highlighting
@@ -205,8 +206,8 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     let jsonStr := (toJson hl).compress
     let base64Json := stringToBase64 jsonStr
     addLatex := addLatex ++ "\\leanproofsource{" ++ base64Json ++ "}\n"
-    -- HTML format (pre-rendered for fast plasTeX processing)
-    let htmlStr := HtmlRender.renderHighlightedToHtml hl
+    -- HTML format: use pre-rendered if available, otherwise render on demand
+    let htmlStr := node.htmlProofBody.getD (HtmlRender.renderHighlightedToHtml hl)
     let base64Html := stringToBase64 htmlStr
     addLatex := addLatex ++ "\\leanproofsourcehtml{" ++ base64Html ++ "}\n"
 
@@ -301,10 +302,13 @@ private def moduleToLatexOutputAux (module : Name) (contents : Array BlueprintCo
 
 /-- Convert imported module to LaTeX (header file, artifact files).
     Highlighted code is obtained from the provided map (from subverso-extract-mod),
-    with fallback to the Hook mechanism during elaboration. -/
-def moduleToLatexOutput (module : Name) (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    with fallback to the Hook mechanism during elaboration.
+    Pre-rendered HTML is obtained from the htmlMap (from .html.json files). -/
+def moduleToLatexOutput (module : Name)
+    (highlightingMap : NameMap SubVerso.Highlighting.Highlighted := {})
+    (htmlMap : NameMap String := {})
     : CoreM LatexOutput := do
-  let contents ← getBlueprintContents module highlightingMap
+  let contents ← getBlueprintContents module highlightingMap htmlMap
   moduleToLatexOutputAux module contents
 
 /-- Convert current module to LaTeX (header file, artifact files).

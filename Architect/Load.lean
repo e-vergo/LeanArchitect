@@ -1,5 +1,6 @@
 import Architect.Output
 import Architect.SubVersoExtract
+import Architect.Hook
 
 
 namespace Architect
@@ -34,16 +35,19 @@ def runEnvOfImports (imports : Array Name) (options : Options) (x : CoreM α) : 
 /-- Outputs the blueprint of a module.
     If `highlightedJsonPath?` is provided, loads cached highlighting from that path.
     Otherwise, tries to load from `.lake/build/highlighted/{Module/Path}.json` (Hook.lean output),
-    falling back to calling subverso-extract-mod directly (slower). -/
+    falling back to calling subverso-extract-mod directly (slower).
+    Pre-rendered HTML is loaded from `.lake/build/highlighted/{Module/Path}.html.json` if available. -/
 def latexOutputOfImportModule (module : Name) (options : Options)
     (highlightedJsonPath? : Option String := none) : IO LatexOutput := do
+  let buildDir : System.FilePath := ".lake" / "build"
   let highlightingMap ← match highlightedJsonPath? with
     | some path => SubVersoExtract.loadHighlightingFromFile path
     | none =>
       -- Try to load from standard Hook.lean location, fall back to subverso-extract-mod
-      let buildDir : System.FilePath := ".lake" / "build"
       SubVersoExtract.loadHighlightingWithFallback module buildDir
-  runEnvOfImports #[module] options (moduleToLatexOutput module highlightingMap)
+  -- Load pre-rendered HTML map from .html.json files (created by Hook.lean)
+  let htmlMap ← loadModuleHighlightingHtml buildDir module
+  runEnvOfImports #[module] options (moduleToLatexOutput module highlightingMap htmlMap)
 
 /-- Outputs the JSON data for the blueprint of a module.
     If `highlightedJsonPath?` is provided, loads cached highlighting from that path.
