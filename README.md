@@ -1,5 +1,9 @@
 # LeanArchitect
 
+> **Experience Prototype**: This is an experimental fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) exploring enhanced features for Lean blueprint generation. Key additions include improved dependency inference, proof-specific dependency tracking, and integration with [Dress](https://github.com/e-vergo/Dress) for artifact generation. Changes may be upstreamed once stable.
+
+---
+
 **LeanArchitect** is a lightweight Lean 4 library that provides the `@[blueprint]` attribute for marking declarations in mathematical formalization projects. It stores metadata about theorems, definitions, and their dependencies without any artifact generation.
 
 ## Architecture
