@@ -213,6 +213,56 @@ This allows projects to use `@[blueprint]` without SubVerso/Verso compilation ov
 - **[leanblueprint](https://github.com/e-vergo/leanblueprint)** — Website/PDF generator consuming Dress artifacts
 - **[Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)** — Upstream project this is forked from
 
+## Fork Changes
+
+This fork ([e-vergo/LeanArchitect](https://github.com/e-vergo/LeanArchitect)) diverges from [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with a **metadata-only architecture**: artifact generation (LaTeX, JSON, syntax highlighting) has been moved to [Dress](https://github.com/e-vergo/Dress).
+
+### Diff Summary
+
+```text
+ 8 files changed, 172 insertions(+), 584 deletions(-)
+```
+
+### Removed Components
+
+| Component | Purpose | New Location |
+|-----------|---------|--------------|
+| `Main.lean` | CLI executable (`extract_blueprint`) | Dress |
+| `Cli` dependency | Command-line argument parsing | Dress |
+| Lake facets (`blueprint`, `blueprintJson`) | Module/library/package extraction | Dress |
+| `blueprintConvert` script | Migration from legacy format | Dress |
+| `Architect.Content` import | Rendering infrastructure | Dress (via SubVerso/Verso) |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `lakefile.lean` | Removed `extract_blueprint` executable, Lake facets, and `Cli` dependency. Now exports only `Architect` library. |
+| `Architect/Attribute.lean` | Changed import from `Architect.Content` to `Architect.Basic` (content rendering moved to Dress). |
+| `lake-manifest.json` | Removed `Cli` package. Single dependency on `batteries`. |
+| `lean-toolchain` | Updated to current Mathlib-compatible toolchain. |
+
+### Architectural Rationale
+
+Upstream LeanArchitect bundles metadata collection with artifact generation. This fork separates concerns:
+
+1. **LeanArchitect** — `@[blueprint]` attribute, `Node`/`NodePart` structures, dependency inference, environment extensions
+2. **Dress** — SubVerso syntax highlighting, Verso HTML rendering, LaTeX output, Lake build facets
+
+Benefits:
+
+- Projects needing only `@[blueprint]` metadata avoid SubVerso/Verso compilation overhead
+- Dress can evolve rendering independently of the core attribute semantics
+- Cleaner dependency graph for downstream consumers
+
+### Dependency Comparison
+
+| | Upstream | This Fork |
+|-|----------|-----------|
+| `batteries` | Yes | Yes |
+| `Cli` | Yes | No |
+| SubVerso/Verso | Transitive | No (moved to Dress) |
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE) for details.
