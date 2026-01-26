@@ -107,6 +107,8 @@ structure Node where
   discussion : Option Nat
   /-- The short title of the node in LaTeX. -/
   title : Option String
+  /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
+  displayName : Option String := none
 deriving Inhabited, Repr, FromJson, ToJson, ToExpr
 
 /-- Backwards compatibility: check if a node is marked as not ready. -/

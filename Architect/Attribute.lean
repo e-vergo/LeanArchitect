@@ -39,6 +39,8 @@ structure Config where
   latexEnv : Option String := none
   /-- The LaTeX label to use for the node. -/
   latexLabel : Option String := none
+  /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
+  displayName : Option String := none
   /-- Enable debugging. -/
   trace : Bool := false
 deriving Repr
@@ -83,6 +85,7 @@ syntax blueprintFullyProvenOption := &"fullyProven" " := " (&"true" <|> &"false"
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
+syntax blueprintDisplayNameOption := &"displayName" " := " str
 
 syntax blueprintOption := "("
   blueprintStatementOption <|>
@@ -93,6 +96,7 @@ syntax blueprintOption := "("
   blueprintMathlibReadyOption <|> blueprintMathlibOption <|>
   blueprintFullyProvenOption <|>
   blueprintDiscussionOption <|>
+  blueprintDisplayNameOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
 
@@ -115,6 +119,7 @@ You may optionally add:
   - `mathlib := true`: Manual override to mark as already in Mathlib.
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
+- `displayName := "short_name"`: Custom display name for dependency graph nodes (default: full qualified name).
 
 For more information, see [LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).
 
@@ -182,6 +187,8 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with latexEnv := str.getString }
       | `(blueprintOption| (latexLabel := $str)) =>
         config := { config with latexLabel := str.getString }
+      | `(blueprintOption| (displayName := $str)) =>
+        config := { config with displayName := str.getString }
       | _ => throwUnsupportedSyntax
     return config
   | _ => throwUnsupportedSyntax
@@ -212,10 +219,10 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
   if ← hasProof name cfg then
     let statement ← mkStatementPart name cfg true
     let proof ← mkProofPart name cfg
-    return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion, title := cfg.title }
+    return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion, title := cfg.title, displayName := cfg.displayName }
   else
     let statement ← mkStatementPart name cfg false
-    return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion, title := cfg.title }
+    return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion, title := cfg.title, displayName := cfg.displayName }
 
 -- register_option blueprint.checkCyclicUses : Bool := {
 --   defValue := true,
