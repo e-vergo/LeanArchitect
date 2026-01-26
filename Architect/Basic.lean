@@ -34,6 +34,9 @@ inductive NodeStatus where
   | inMathlib    -- Derived or manual: already in Mathlib
   deriving Repr, Inhabited, BEq, DecidableEq
 
+instance : Inhabited NodeStatus where
+  default := .stated
+
 instance : ToJson NodeStatus where
   toJson
     | .notReady => "notReady"
