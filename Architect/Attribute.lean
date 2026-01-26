@@ -79,6 +79,7 @@ syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
 syntax blueprintReadyOption := &"ready" " := " (&"true" <|> &"false")
 syntax blueprintMathlibReadyOption := &"mathlibReady" " := " (&"true" <|> &"false")
 syntax blueprintMathlibOption := &"mathlib" " := " (&"true" <|> &"false")
+syntax blueprintFullyProvenOption := &"fullyProven" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
@@ -90,6 +91,7 @@ syntax blueprintOption := "("
   blueprintTitleOption <|>
   blueprintNotReadyOption <|> blueprintReadyOption <|>
   blueprintMathlibReadyOption <|> blueprintMathlibOption <|>
+  blueprintFullyProvenOption <|>
   blueprintDiscussionOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
@@ -108,6 +110,7 @@ You may optionally add:
 - Status options (only one should be used):
   - `notReady := true`: The node is not ready to formalize (needs more blueprint work).
   - `ready := true`: The node is ready to formalize.
+  - `fullyProven := true`: Mark as fully proven (this + all dependencies proven).
   - `mathlibReady := true`: The node is ready to upstream to Mathlib.
   - `mathlib := true`: Manual override to mark as already in Mathlib.
 - `discussion := 123`: The discussion issue number of the node.
@@ -168,6 +171,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (mathlib := true)) =>
         config := { config with status := .inMathlib }
       | `(blueprintOption| (mathlib := false)) =>
+        pure () -- no-op
+      | `(blueprintOption| (fullyProven := true)) =>
+        config := { config with status := .fullyProven }
+      | `(blueprintOption| (fullyProven := false)) =>
         pure () -- no-op
       | `(blueprintOption| (discussion := $n)) =>
         config := { config with discussion := n.getNat }
