@@ -29,8 +29,8 @@ structure Config where
   proofUsesLabels : Array String := #[]
   /-- The set of labels to exclude from `proofUsesLabels`. -/
   proofExcludesLabels : Array String := #[]
-  /-- The surrounding environment is not ready to be formalized, typically because it requires more blueprint work. -/
-  notReady : Bool := false
+  /-- The manually-set status of the node. Defaults to `.stated`. -/
+  status : NodeStatus := .stated
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat := none
   /-- The short title of the node in LaTeX. -/
@@ -42,6 +42,9 @@ structure Config where
   /-- Enable debugging. -/
   trace : Bool := false
 deriving Repr
+
+/-- Backwards compatibility accessor. -/
+def Config.notReady (c : Config) : Bool := c.status == .notReady
 
 syntax blueprintSingleUses := "-"? (ident <|> str)
 syntax blueprintUses := "[" blueprintSingleUses,* "]"
@@ -71,7 +74,11 @@ syntax blueprintProofOption := &"proof" " := " plainDocComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
+-- Status options (only one should be set; later ones override earlier)
 syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
+syntax blueprintReadyOption := &"ready" " := " (&"true" <|> &"false")
+syntax blueprintMathlibReadyOption := &"mathlibReady" " := " (&"true" <|> &"false")
+syntax blueprintMathlibOption := &"mathlib" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
@@ -81,7 +88,9 @@ syntax blueprintOption := "("
   blueprintHasProofOption <|> blueprintProofOption <|>
   blueprintUsesOption <|> blueprintProofUsesOption <|>
   blueprintTitleOption <|>
-  blueprintNotReadyOption <|> blueprintDiscussionOption <|>
+  blueprintNotReadyOption <|> blueprintReadyOption <|>
+  blueprintMathlibReadyOption <|> blueprintMathlibOption <|>
+  blueprintDiscussionOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
 
@@ -96,7 +105,11 @@ You may optionally add:
 - `uses := [a, "b"]`: The dependencies of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `proofUses := [a, "b"]`: The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `title := /-- Title -/`: The title of the node in LaTeX.
-- `notReady := true`: Whether the node is not ready.
+- Status options (only one should be used):
+  - `notReady := true`: The node is not ready to formalize (needs more blueprint work).
+  - `ready := true`: The node is ready to formalize.
+  - `mathlibReady := true`: The node is ready to upstream to Mathlib.
+  - `mathlib := true`: Manual override to mark as already in Mathlib.
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
 
@@ -141,9 +154,21 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (title := $doc:docComment)) =>
         config := { config with title := (← getDocStringText doc).trimAscii.copy }
       | `(blueprintOption| (notReady := true)) =>
-        config := { config with notReady := true }
+        config := { config with status := .notReady }
       | `(blueprintOption| (notReady := false)) =>
-        config := { config with notReady := false }
+        pure () -- no-op, stays at default .stated
+      | `(blueprintOption| (ready := true)) =>
+        config := { config with status := .ready }
+      | `(blueprintOption| (ready := false)) =>
+        pure () -- no-op
+      | `(blueprintOption| (mathlibReady := true)) =>
+        config := { config with status := .mathlibReady }
+      | `(blueprintOption| (mathlibReady := false)) =>
+        pure () -- no-op
+      | `(blueprintOption| (mathlib := true)) =>
+        config := { config with status := .inMathlib }
+      | `(blueprintOption| (mathlib := false)) =>
+        pure () -- no-op
       | `(blueprintOption| (discussion := $n)) =>
         config := { config with discussion := n.getNat }
       | `(blueprintOption| (latexEnv := $str)) =>
@@ -180,10 +205,10 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
   if ← hasProof name cfg then
     let statement ← mkStatementPart name cfg true
     let proof ← mkProofPart name cfg
-    return { cfg with name, latexLabel, statement, proof }
+    return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion, title := cfg.title }
   else
     let statement ← mkStatementPart name cfg false
-    return { cfg with name, latexLabel, statement, proof := none }
+    return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion, title := cfg.title }
 
 -- register_option blueprint.checkCyclicUses : Bool := {
 --   defValue := true,

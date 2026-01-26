@@ -9,6 +9,68 @@ namespace Architect
 initialize registerTraceClass `blueprint
 initialize registerTraceClass `blueprint.debug
 
+/-- Status of a blueprint node for visualization.
+
+    There are 8 possible statuses, determined as follows:
+    - `notReady`: Manual flag via `@[blueprint (notReady)]`
+    - `stated`: Default (in blueprint but no Lean decl yet, or no manual status)
+    - `ready`: Manual flag via `@[blueprint (ready)]`
+    - `sorry`: Derived - has `sorryAx` in proof
+    - `proven`: Derived - formalized without sorry
+    - `fullyProven`: Auto-computed from graph (this + all deps proven)
+    - `mathlibReady`: Manual flag via `@[blueprint (mathlibReady)]`
+    - `inMathlib`: Derived (module prefix) OR manual override
+
+    The `sorry` and `fullyProven` statuses only apply to theorems/lemmas (ellipse shape),
+    not definitions (box shape). -/
+inductive NodeStatus where
+  | notReady     -- Manual: not ready to formalize
+  | stated       -- Default: statement exists in blueprint
+  | ready        -- Manual: ready to formalize
+  | sorry        -- Derived: has sorryAx in proof
+  | proven       -- Derived: formalized without sorry
+  | fullyProven  -- Auto-computed: this + all ancestors proven
+  | mathlibReady -- Manual: ready to upstream to Mathlib
+  | inMathlib    -- Derived or manual: already in Mathlib
+  deriving Repr, Inhabited, BEq, DecidableEq
+
+instance : ToJson NodeStatus where
+  toJson
+    | .notReady => "notReady"
+    | .stated => "stated"
+    | .ready => "ready"
+    | .sorry => "sorry"
+    | .proven => "proven"
+    | .fullyProven => "fullyProven"
+    | .mathlibReady => "mathlibReady"
+    | .inMathlib => "inMathlib"
+
+instance : FromJson NodeStatus where
+  fromJson? json := do
+    let s ← json.getStr?
+    match s with
+    | "notReady" => pure .notReady
+    | "stated" => pure .stated
+    | "ready" => pure .ready
+    | "sorry" => pure .sorry
+    | "proven" => pure .proven
+    | "fullyProven" => pure .fullyProven
+    | "mathlibReady" => pure .mathlibReady
+    | "inMathlib" => pure .inMathlib
+    | _ => throw s!"unknown NodeStatus: {s}"
+
+instance : ToExpr NodeStatus where
+  toTypeExpr := mkConst ``NodeStatus
+  toExpr
+    | .notReady => mkConst ``NodeStatus.notReady
+    | .stated => mkConst ``NodeStatus.stated
+    | .ready => mkConst ``NodeStatus.ready
+    | .sorry => mkConst ``NodeStatus.sorry
+    | .proven => mkConst ``NodeStatus.proven
+    | .fullyProven => mkConst ``NodeStatus.fullyProven
+    | .mathlibReady => mkConst ``NodeStatus.mathlibReady
+    | .inMathlib => mkConst ``NodeStatus.inMathlib
+
 /-- The statement or proof of a node. -/
 structure NodePart where
   /-- The natural language description of this part. -/
@@ -35,13 +97,17 @@ structure Node where
   statement : NodePart
   /-- The proof of this node. -/
   proof : Option NodePart
-  /-- The surrounding environment is not ready to be formalized, typically because it requires more blueprint work. -/
-  notReady : Bool
+  /-- The manually-set status of the node from the @[blueprint] attribute.
+      This is the "input" status that may be overridden by derived statuses. -/
+  status : NodeStatus := .stated
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat
   /-- The short title of the node in LaTeX. -/
   title : Option String
 deriving Inhabited, Repr, FromJson, ToJson, ToExpr
+
+/-- Backwards compatibility: check if a node is marked as not ready. -/
+def Node.notReady (n : Node) : Bool := n.status == .notReady
 
 structure NodeWithPos extends Node where
   /--

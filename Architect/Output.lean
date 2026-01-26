@@ -119,7 +119,12 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
   addLatex := addLatex ++ "\\label{" ++ node.latexLabel ++ "}\n"
 
   addLatex := addLatex ++ "\\lean{" ++ ",".intercalate (allLeanNames.map toString).toList ++ "}\n"
-  if allNodes.any (·.notReady) then
+  -- Output status-related LaTeX commands
+  -- Priority: inMathlib/mathlibReady > notReady
+  let hasInMathlib := allNodes.any (·.status == .inMathlib)
+  let hasMathlibReady := allNodes.any (·.status == .mathlibReady)
+  let hasNotReady := allNodes.any (·.status == .notReady)
+  if hasNotReady && !hasInMathlib && !hasMathlibReady then
     addLatex := addLatex ++ "\\notready\n"
   if let some d := allNodes.findSome? (·.discussion) then
     addLatex := addLatex ++ "\\discussion{" ++ toString d ++ "}\n"
@@ -274,6 +279,7 @@ def NodeWithPos.toJson (node : NodeWithPos) : Json :=
     "latexLabel": $(node.latexLabel),
     "statement": $(node.statement),
     "proof": $(node.proof),
+    "status": $(node.status),
     "notReady": $(node.notReady),
     "discussion": $(node.discussion),
     "title": $(node.title),
