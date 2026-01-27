@@ -74,38 +74,6 @@ instance : ToExpr NodeStatus where
     | .mathlibReady => mkConst ``NodeStatus.mathlibReady
     | .inMathlib => mkConst ``NodeStatus.inMathlib
 
-/-- Priority level for dashboard display -/
-inductive Priority where
-  | high
-  | medium
-  | low
-  deriving Repr, Inhabited, BEq, DecidableEq
-
-instance : ToString Priority where
-  toString
-    | .high => "high"
-    | .medium => "medium"
-    | .low => "low"
-
-instance : ToJson Priority where
-  toJson p := Json.str (toString p)
-
-instance : FromJson Priority where
-  fromJson? j := do
-    let s ← j.getStr?
-    match s with
-    | "high" => pure .high
-    | "medium" => pure .medium
-    | "low" => pure .low
-    | _ => throw "Invalid priority"
-
-instance : ToExpr Priority where
-  toTypeExpr := mkConst ``Priority
-  toExpr
-    | .high => mkConst ``Priority.high
-    | .medium => mkConst ``Priority.medium
-    | .low => mkConst ``Priority.low
-
 /-- The statement or proof of a node. -/
 structure NodePart where
   /-- The natural language description of this part. -/
@@ -145,8 +113,8 @@ structure Node where
   keyTheorem : Bool := false
   /-- User message/notes about this node -/
   message : Option String := none
-  /-- Priority level for dashboard display -/
-  priority : Option Priority := none
+  /-- Priority item for dashboard display -/
+  priorityItem : Bool := false
   /-- Reason the node is blocked -/
   blocked : Option String := none
   /-- Known potential issues -/

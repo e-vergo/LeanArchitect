@@ -45,8 +45,8 @@ structure Config where
   keyTheorem : Bool := false
   /-- User message/notes about this node -/
   message : Option String := none
-  /-- Priority level for dashboard display -/
-  priority : Option Priority := none
+  /-- Priority item for dashboard display -/
+  priorityItem : Bool := false
   /-- Reason the node is blocked -/
   blocked : Option String := none
   /-- Known potential issues -/
@@ -103,7 +103,7 @@ syntax blueprintDisplayNameOption := &"displayName" " := " str
 -- New dashboard-related options
 syntax blueprintKeyTheoremOption := &"keyTheorem" " := " (&"true" <|> &"false")
 syntax blueprintMessageOption := &"message" " := " str
-syntax blueprintPriorityOption := &"priority" " := " (&"high" <|> &"medium" <|> &"low")
+syntax blueprintPriorityItemOption := &"priorityItem" " := " (&"true" <|> &"false")
 syntax blueprintBlockedOption := &"blocked" " := " str
 syntax blueprintPotentialIssueOption := &"potentialIssue" " := " str
 syntax blueprintTechnicalDebtOption := &"technicalDebt" " := " str
@@ -121,7 +121,7 @@ syntax blueprintOption := "("
   blueprintDisplayNameOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption <|>
   blueprintKeyTheoremOption <|> blueprintMessageOption <|>
-  blueprintPriorityOption <|> blueprintBlockedOption <|>
+  blueprintPriorityItemOption <|> blueprintBlockedOption <|>
   blueprintPotentialIssueOption <|> blueprintTechnicalDebtOption <|>
   blueprintMiscOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
@@ -149,7 +149,7 @@ You may optionally add:
 - Dashboard/metadata options:
   - `keyTheorem := true`: Mark as a key theorem (highlighted in dashboard).
   - `message := "note"`: User message/notes about this node.
-  - `priority := high|medium|low`: Priority level for dashboard display.
+  - `priorityItem := true|false`: Priority item for dashboard display.
   - `blocked := "reason"`: Reason the node is blocked.
   - `potentialIssue := "description"`: Known potential issues.
   - `technicalDebt := "description"`: Technical debt notes.
@@ -229,12 +229,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with keyTheorem := false }
       | `(blueprintOption| (message := $s:str)) =>
         config := { config with message := some s.getString }
-      | `(blueprintOption| (priority := high)) =>
-        config := { config with priority := some .high }
-      | `(blueprintOption| (priority := medium)) =>
-        config := { config with priority := some .medium }
-      | `(blueprintOption| (priority := low)) =>
-        config := { config with priority := some .low }
+      | `(blueprintOption| (priorityItem := true)) =>
+        config := { config with priorityItem := true }
+      | `(blueprintOption| (priorityItem := false)) =>
+        config := { config with priorityItem := false }
       | `(blueprintOption| (blocked := $s:str)) =>
         config := { config with blocked := some s.getString }
       | `(blueprintOption| (potentialIssue := $s:str)) =>
@@ -275,14 +273,14 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
     let proof ← mkProofPart name cfg
     return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion,
              title := cfg.title, displayName := cfg.displayName,
-             keyTheorem := cfg.keyTheorem, message := cfg.message, priority := cfg.priority,
+             keyTheorem := cfg.keyTheorem, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
   else
     let statement ← mkStatementPart name cfg false
     return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion,
              title := cfg.title, displayName := cfg.displayName,
-             keyTheorem := cfg.keyTheorem, message := cfg.message, priority := cfg.priority,
+             keyTheorem := cfg.keyTheorem, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
 
