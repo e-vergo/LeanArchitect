@@ -41,6 +41,20 @@ structure Config where
   latexLabel : Option String := none
   /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
   displayName : Option String := none
+  /-- Mark as a key theorem (highlighted in dashboard) -/
+  keyTheorem : Bool := false
+  /-- User message/notes about this node -/
+  message : Option String := none
+  /-- Priority level for dashboard display -/
+  priority : Option Priority := none
+  /-- Reason the node is blocked -/
+  blocked : Option String := none
+  /-- Known potential issues -/
+  potentialIssue : Option String := none
+  /-- Technical debt notes -/
+  technicalDebt : Option String := none
+  /-- Miscellaneous notes -/
+  misc : Option String := none
   /-- Enable debugging. -/
   trace : Bool := false
 deriving Repr
@@ -86,6 +100,14 @@ syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
 syntax blueprintDisplayNameOption := &"displayName" " := " str
+-- New dashboard-related options
+syntax blueprintKeyTheoremOption := &"keyTheorem" " := " (&"true" <|> &"false")
+syntax blueprintMessageOption := &"message" " := " str
+syntax blueprintPriorityOption := &"priority" " := " (&"high" <|> &"medium" <|> &"low")
+syntax blueprintBlockedOption := &"blocked" " := " str
+syntax blueprintPotentialIssueOption := &"potentialIssue" " := " str
+syntax blueprintTechnicalDebtOption := &"technicalDebt" " := " str
+syntax blueprintMiscOption := &"misc" " := " str
 
 syntax blueprintOption := "("
   blueprintStatementOption <|>
@@ -97,7 +119,11 @@ syntax blueprintOption := "("
   blueprintFullyProvenOption <|>
   blueprintDiscussionOption <|>
   blueprintDisplayNameOption <|>
-  blueprintLatexEnvOption <|> blueprintLatexLabelOption ")"
+  blueprintLatexEnvOption <|> blueprintLatexLabelOption <|>
+  blueprintKeyTheoremOption <|> blueprintMessageOption <|>
+  blueprintPriorityOption <|> blueprintBlockedOption <|>
+  blueprintPotentialIssueOption <|> blueprintTechnicalDebtOption <|>
+  blueprintMiscOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
 
 /--
@@ -120,6 +146,14 @@ You may optionally add:
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
 - `displayName := "short_name"`: Custom display name for dependency graph nodes (default: full qualified name).
+- Dashboard/metadata options:
+  - `keyTheorem := true`: Mark as a key theorem (highlighted in dashboard).
+  - `message := "note"`: User message/notes about this node.
+  - `priority := high|medium|low`: Priority level for dashboard display.
+  - `blocked := "reason"`: Reason the node is blocked.
+  - `potentialIssue := "description"`: Known potential issues.
+  - `technicalDebt := "description"`: Technical debt notes.
+  - `misc := "notes"`: Miscellaneous notes.
 
 For more information, see [LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).
 
@@ -189,6 +223,26 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with latexLabel := str.getString }
       | `(blueprintOption| (displayName := $str)) =>
         config := { config with displayName := str.getString }
+      | `(blueprintOption| (keyTheorem := true)) =>
+        config := { config with keyTheorem := true }
+      | `(blueprintOption| (keyTheorem := false)) =>
+        config := { config with keyTheorem := false }
+      | `(blueprintOption| (message := $s:str)) =>
+        config := { config with message := some s.getString }
+      | `(blueprintOption| (priority := high)) =>
+        config := { config with priority := some .high }
+      | `(blueprintOption| (priority := medium)) =>
+        config := { config with priority := some .medium }
+      | `(blueprintOption| (priority := low)) =>
+        config := { config with priority := some .low }
+      | `(blueprintOption| (blocked := $s:str)) =>
+        config := { config with blocked := some s.getString }
+      | `(blueprintOption| (potentialIssue := $s:str)) =>
+        config := { config with potentialIssue := some s.getString }
+      | `(blueprintOption| (technicalDebt := $s:str)) =>
+        config := { config with technicalDebt := some s.getString }
+      | `(blueprintOption| (misc := $s:str)) =>
+        config := { config with misc := some s.getString }
       | _ => throwUnsupportedSyntax
     return config
   | _ => throwUnsupportedSyntax
@@ -219,10 +273,18 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
   if ← hasProof name cfg then
     let statement ← mkStatementPart name cfg true
     let proof ← mkProofPart name cfg
-    return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion, title := cfg.title, displayName := cfg.displayName }
+    return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion,
+             title := cfg.title, displayName := cfg.displayName,
+             keyTheorem := cfg.keyTheorem, message := cfg.message, priority := cfg.priority,
+             blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
+             technicalDebt := cfg.technicalDebt, misc := cfg.misc }
   else
     let statement ← mkStatementPart name cfg false
-    return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion, title := cfg.title, displayName := cfg.displayName }
+    return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion,
+             title := cfg.title, displayName := cfg.displayName,
+             keyTheorem := cfg.keyTheorem, message := cfg.message, priority := cfg.priority,
+             blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
+             technicalDebt := cfg.technicalDebt, misc := cfg.misc }
 
 -- register_option blueprint.checkCyclicUses : Bool := {
 --   defValue := true,
