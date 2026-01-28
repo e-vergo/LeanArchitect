@@ -41,8 +41,8 @@ structure Config where
   latexLabel : Option String := none
   /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
   displayName : Option String := none
-  /-- Mark as a key theorem (highlighted in dashboard) -/
-  keyTheorem : Bool := false
+  /-- Mark as a key declaration (highlighted in dashboard) -/
+  keyDeclaration : Bool := false
   /-- User message/notes about this node -/
   message : Option String := none
   /-- Priority item for dashboard display -/
@@ -101,7 +101,7 @@ syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
 syntax blueprintDisplayNameOption := &"displayName" " := " str
 -- New dashboard-related options
-syntax blueprintKeyTheoremOption := &"keyTheorem" " := " (&"true" <|> &"false")
+syntax blueprintKeyDeclarationOption := &"keyDeclaration" " := " (&"true" <|> &"false")
 syntax blueprintMessageOption := &"message" " := " str
 syntax blueprintPriorityItemOption := &"priorityItem" " := " (&"true" <|> &"false")
 syntax blueprintBlockedOption := &"blocked" " := " str
@@ -120,7 +120,7 @@ syntax blueprintOption := "("
   blueprintDiscussionOption <|>
   blueprintDisplayNameOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption <|>
-  blueprintKeyTheoremOption <|> blueprintMessageOption <|>
+  blueprintKeyDeclarationOption <|> blueprintMessageOption <|>
   blueprintPriorityItemOption <|> blueprintBlockedOption <|>
   blueprintPotentialIssueOption <|> blueprintTechnicalDebtOption <|>
   blueprintMiscOption ")"
@@ -147,7 +147,7 @@ You may optionally add:
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
 - `displayName := "short_name"`: Custom display name for dependency graph nodes (default: full qualified name).
 - Dashboard/metadata options:
-  - `keyTheorem := true`: Mark as a key theorem (highlighted in dashboard).
+  - `keyDeclaration := true`: Mark as a key declaration (highlighted in dashboard).
   - `message := "note"`: User message/notes about this node.
   - `priorityItem := true|false`: Priority item for dashboard display.
   - `blocked := "reason"`: Reason the node is blocked.
@@ -223,10 +223,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with latexLabel := str.getString }
       | `(blueprintOption| (displayName := $str)) =>
         config := { config with displayName := str.getString }
-      | `(blueprintOption| (keyTheorem := true)) =>
-        config := { config with keyTheorem := true }
-      | `(blueprintOption| (keyTheorem := false)) =>
-        config := { config with keyTheorem := false }
+      | `(blueprintOption| (keyDeclaration := true)) =>
+        config := { config with keyDeclaration := true }
+      | `(blueprintOption| (keyDeclaration := false)) =>
+        config := { config with keyDeclaration := false }
       | `(blueprintOption| (message := $s:str)) =>
         config := { config with message := some s.getString }
       | `(blueprintOption| (priorityItem := true)) =>
@@ -273,14 +273,14 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
     let proof ← mkProofPart name cfg
     return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion,
              title := cfg.title, displayName := cfg.displayName,
-             keyTheorem := cfg.keyTheorem, message := cfg.message, priorityItem := cfg.priorityItem,
+             keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
   else
     let statement ← mkStatementPart name cfg false
     return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion,
              title := cfg.title, displayName := cfg.displayName,
-             keyTheorem := cfg.keyTheorem, message := cfg.message, priorityItem := cfg.priorityItem,
+             keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
 

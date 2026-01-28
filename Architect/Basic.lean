@@ -109,8 +109,8 @@ structure Node where
   title : Option String
   /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
   displayName : Option String := none
-  /-- Mark as a key theorem (highlighted in dashboard) -/
-  keyTheorem : Bool := false
+  /-- Mark as a key declaration (highlighted in dashboard) -/
+  keyDeclaration : Bool := false
   /-- User message/notes about this node -/
   message : Option String := none
   /-- Priority item for dashboard display -/
