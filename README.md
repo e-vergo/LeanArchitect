@@ -38,11 +38,10 @@ Artifact generation has been **moved to [Dress](https://github.com/e-vergo/Dress
 
 ### 2. New Metadata Fields
 
-Eight new fields added to support dashboard and project management features:
+Seven new fields added to support dashboard and project management features:
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `displayName` | `Option String` | Custom node label in dependency graph (defaults to qualified name) |
 | `keyDeclaration` | `Bool` | Highlight in dashboard Key Theorems section |
 | `message` | `Option String` | User notes displayed in Messages panel |
 | `priorityItem` | `Bool` | Flag for dashboard Attention column |
@@ -50,6 +49,8 @@ Eight new fields added to support dashboard and project management features:
 | `potentialIssue` | `Option String` | Known concerns or issues |
 | `technicalDebt` | `Option String` | Technical debt / cleanup notes |
 | `misc` | `Option String` | Catch-all miscellaneous notes |
+
+Note: The existing `title` field is also used as the custom display name for dependency graph nodes (defaults to qualified Lean name if not set).
 
 ### 3. Proof-Specific Dependencies
 
@@ -152,8 +153,8 @@ lemma helperLemma : ... := ...
 @[blueprint "thm:blocked" (blocked := "Waiting for mathlib PR #12345")]
 theorem blockedTheorem : ... := sorry
 
--- Custom display name for cleaner graph labels
-@[blueprint "thm:sqrt2" (displayName := "√2 Irrational")]
+-- Custom title/display name for cleaner graph labels
+@[blueprint "thm:sqrt2" (title := "√2 Irrational")]
 theorem sqrt2_irrational : ... := ...
 
 -- Priority item for attention
@@ -225,9 +226,8 @@ structure Node where
   proof : Option NodePart        -- Optional proof part
   status : NodeStatus            -- notReady, stated, ready, sorry, proven, etc.
   discussion : Option Nat        -- GitHub issue number
-  title : Option String          -- Short title for LaTeX
+  title : Option String          -- Short title for LaTeX / custom graph label
   -- Dashboard metadata (new in this fork):
-  displayName : Option String    -- Custom graph label
   keyDeclaration : Bool          -- Highlight in Key Theorems
   message : Option String        -- User notes
   priorityItem : Bool            -- Attention column flag

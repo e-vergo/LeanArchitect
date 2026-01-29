@@ -106,10 +106,8 @@ structure Node where
   status : NodeStatus := .stated
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat
-  /-- The short title of the node in LaTeX. -/
+  /-- The short title of the node in LaTeX. Also used as custom display name for dependency graph if set. -/
   title : Option String
-  /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
-  displayName : Option String := none
   /-- Mark as a key declaration (highlighted in dashboard) -/
   keyDeclaration : Bool := false
   /-- User message/notes about this node -/

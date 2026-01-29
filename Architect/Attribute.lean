@@ -39,8 +39,6 @@ structure Config where
   latexEnv : Option String := none
   /-- The LaTeX label to use for the node. -/
   latexLabel : Option String := none
-  /-- Custom display name for the node in dependency graph. If not set, uses full qualified name. -/
-  displayName : Option String := none
   /-- Mark as a key declaration (highlighted in dashboard) -/
   keyDeclaration : Bool := false
   /-- User message/notes about this node -/
@@ -99,8 +97,7 @@ syntax blueprintFullyProvenOption := &"fullyProven" " := " (&"true" <|> &"false"
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
-syntax blueprintDisplayNameOption := &"displayName" " := " str
--- New dashboard-related options
+-- Dashboard-related options
 syntax blueprintKeyDeclarationOption := &"keyDeclaration" " := " (&"true" <|> &"false")
 syntax blueprintMessageOption := &"message" " := " str
 syntax blueprintPriorityItemOption := &"priorityItem" " := " (&"true" <|> &"false")
@@ -118,7 +115,6 @@ syntax blueprintOption := "("
   blueprintMathlibReadyOption <|> blueprintMathlibOption <|>
   blueprintFullyProvenOption <|>
   blueprintDiscussionOption <|>
-  blueprintDisplayNameOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption <|>
   blueprintKeyDeclarationOption <|> blueprintMessageOption <|>
   blueprintPriorityItemOption <|> blueprintBlockedOption <|>
@@ -145,7 +141,6 @@ You may optionally add:
   - `mathlib := true`: Manual override to mark as already in Mathlib.
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
-- `displayName := "short_name"`: Custom display name for dependency graph nodes (default: full qualified name).
 - Dashboard/metadata options:
   - `keyDeclaration := true`: Mark as a key declaration (highlighted in dashboard).
   - `message := "note"`: User message/notes about this node.
@@ -221,8 +216,6 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with latexEnv := str.getString }
       | `(blueprintOption| (latexLabel := $str)) =>
         config := { config with latexLabel := str.getString }
-      | `(blueprintOption| (displayName := $str)) =>
-        config := { config with displayName := str.getString }
       | `(blueprintOption| (keyDeclaration := true)) =>
         config := { config with keyDeclaration := true }
       | `(blueprintOption| (keyDeclaration := false)) =>
@@ -272,14 +265,14 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
     let statement ← mkStatementPart name cfg true
     let proof ← mkProofPart name cfg
     return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion,
-             title := cfg.title, displayName := cfg.displayName,
+             title := cfg.title,
              keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
   else
     let statement ← mkStatementPart name cfg false
     return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion,
-             title := cfg.title, displayName := cfg.displayName,
+             title := cfg.title,
              keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
