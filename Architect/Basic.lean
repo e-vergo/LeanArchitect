@@ -8,6 +8,7 @@ namespace Architect
 
 initialize registerTraceClass `blueprint
 initialize registerTraceClass `blueprint.debug
+initialize registerTraceClass `blueprint.timing
 
 /-- Status of a blueprint node for visualization.
 
