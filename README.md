@@ -1,10 +1,70 @@
 # LeanArchitect
 
-> **Experience Prototype**: This is an experimental fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) exploring enhanced features for Lean blueprint generation. Key additions include improved dependency inference, proof-specific dependency tracking, and integration with [Dress](https://github.com/e-vergo/Dress) for artifact generation. Changes may be upstreamed once stable.
+> **Fork Status**: This is a fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with significant architectural changes. See [Fork Changes](#fork-changes) for details.
 
 ---
 
 **LeanArchitect** is a lightweight Lean 4 library that provides the `@[blueprint]` attribute for marking declarations in mathematical formalization projects. It stores metadata about theorems, definitions, and their dependencies without any artifact generation.
+
+## Fork Changes
+
+This fork ([e-vergo/LeanArchitect](https://github.com/e-vergo/LeanArchitect)) diverges from [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with two major changes:
+
+### 1. Metadata-Only Architecture
+
+Artifact generation has been **moved to [Dress](https://github.com/e-vergo/Dress)**. This fork removes:
+
+| Removed Component | Purpose | New Location |
+|-------------------|---------|--------------|
+| `Main.lean` | CLI executable (`extract_blueprint`) | Dress |
+| `Cli` dependency | Command-line argument parsing | Dress |
+| Lake facets | `blueprint`, `blueprintJson` extraction | Dress |
+| `Architect.Content` | Rendering infrastructure | Dress (via SubVerso/Verso) |
+| `blueprintConvert` script | Migration from legacy format | Dress |
+
+**Benefits**:
+- Projects needing only `@[blueprint]` metadata avoid SubVerso/Verso compilation overhead
+- Single dependency on `batteries` (no Cli, no SubVerso/Verso transitives)
+- Faster compilation for projects not generating artifacts
+- Cleaner separation of concerns: metadata collection vs. artifact generation
+
+**Dependency comparison**:
+
+| Dependency | Upstream | This Fork |
+|------------|----------|-----------|
+| `batteries` | Yes | Yes |
+| `Cli` | Yes | **No** |
+| SubVerso/Verso | Transitive | **No** (moved to Dress) |
+
+### 2. New Metadata Fields
+
+Eight new fields added to support dashboard and project management features:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `displayName` | `Option String` | Custom node label in dependency graph (defaults to qualified name) |
+| `keyDeclaration` | `Bool` | Highlight in dashboard Key Theorems section |
+| `message` | `Option String` | User notes displayed in Messages panel |
+| `priorityItem` | `Bool` | Flag for dashboard Attention column |
+| `blocked` | `Option String` | Reason the node is blocked |
+| `potentialIssue` | `Option String` | Known concerns or issues |
+| `technicalDebt` | `Option String` | Technical debt / cleanup notes |
+| `misc` | `Option String` | Catch-all miscellaneous notes |
+
+### 3. Proof-Specific Dependencies
+
+New fields distinguish dependencies that appear only in proofs vs. statements:
+
+| Field | Purpose |
+|-------|---------|
+| `proofUses` | Dependencies used only in the proof (solid edges in graph) |
+| `proofExcludes` | Exclude inferred proof dependencies |
+| `proofUsesLabels` | Same as `proofUses`, by LaTeX label |
+| `proofExcludesLabels` | Same as `proofExcludes`, by LaTeX label |
+
+This enables dashed edges (statement dependencies) vs. solid edges (proof dependencies) in the dependency graph.
+
+---
 
 ## Architecture
 
@@ -27,15 +87,16 @@ LeanArchitect is the **metadata layer** in the blueprint toolchain:
 │ • @[blueprint] attr │    │ • Re-exports LeanArchitect              │
 │ • Node/NodePart     │    │ • SubVerso syntax highlighting          │
 │ • Dependency infer  │    │ • Verso HTML rendering                  │
-│ • NO SubVerso/Verso │    │ • LaTeX with embedded hover data        │
-│ • Fast compilation  │    │ • Dressed artifacts for leanblueprint   │
+│ • Dashboard fields  │    │ • LaTeX with embedded hover data        │
+│ • NO SubVerso/Verso │    │ • Dressed artifacts for Runway          │
+│ • Fast compilation  │    │ • Lake facets (blueprint, blueprintJson)│
 └─────────────────────┘    └─────────────────────────────────────────┘
                                           │
                                           ▼
                            ┌─────────────────────────────────────────┐
-                           │            LEANBLUEPRINT                │
+                           │               RUNWAY                    │
                            │  Consumes Dress artifacts to produce   │
-                           │  interactive website + PDF              │
+                           │  interactive website + dashboard + PDF  │
                            └─────────────────────────────────────────┘
 ```
 
@@ -76,19 +137,60 @@ theorem even_add_even (a b : ℕ) (ha : Even a) (hb : Even b) : Even (a + b) := 
   exact ⟨k + l, by omega⟩
 ```
 
-### Attribute Options
+### Dashboard Metadata
+
+```lean
+-- Key theorem highlighted in dashboard
+@[blueprint "thm:main" (keyDeclaration := true)]
+theorem mainTheorem : ... := ...
+
+-- With user message
+@[blueprint "lem:helper" (message := "Used in main proof chain")]
+lemma helperLemma : ... := ...
+
+-- Blocked work with reason
+@[blueprint "thm:blocked" (blocked := "Waiting for mathlib PR #12345")]
+theorem blockedTheorem : ... := sorry
+
+-- Custom display name for cleaner graph labels
+@[blueprint "thm:sqrt2" (displayName := "√2 Irrational")]
+theorem sqrt2_irrational : ... := ...
+
+-- Priority item for attention
+@[blueprint "lem:urgent" (priorityItem := true, potentialIssue := "Edge case not handled")]
+lemma urgentFix : ... := ...
+
+-- Technical debt tracking
+@[blueprint "thm:needs-cleanup" (technicalDebt := "Refactor to use new API")]
+theorem needsCleanup : ... := ...
+```
+
+### Dependency Options
 
 ```lean
 @[blueprint "thm:main"
   (title := "Main Theorem")
   (statement := /-- Custom statement text for LaTeX -/)
   (proof := /-- Custom proof explanation -/)
-  (uses := [lem_helper, thm_base])           -- Explicit dependencies
+  (uses := [lem_helper, thm_base])           -- Statement dependencies
+  (excludes := [-lem_internal])              -- Exclude from inference
   (proofUses := [lem_technical])             -- Proof-only dependencies
-  (notReady := true)                          -- Mark as work-in-progress
-  (discussion := 42)                          -- GitHub issue number
-  (latexEnv := "theorem")]                    -- LaTeX environment
+  (proofExcludes := [-lem_auto])             -- Exclude from proof inference
+  (status := .stated)                        -- Manual status override
+  (discussion := 42)                         -- GitHub issue number
+  (latexEnv := "theorem")]                   -- LaTeX environment
 theorem mainTheorem : ... := ...
+```
+
+### Label-Based Dependencies
+
+Dependencies can reference other nodes by LaTeX label instead of Lean name:
+
+```lean
+@[blueprint "thm:c"
+  (usesLabels := ["thm:a", "thm:b"])
+  (proofUsesLabels := ["lem:helper"])]
+theorem thmC : ... := ...
 ```
 
 ### Dependency Inference
@@ -104,10 +206,10 @@ lemma lemB : ... := lemA  -- Automatically depends on lem:a
 
 @[blueprint "thm:c"]
 theorem thmC : ... := by
-  apply lemB              -- Proof depends on lem:b
+  apply lemB              -- Proof depends on lem:b (solid edge)
 ```
 
-Use `(excludes := [-name])` to remove inferred dependencies, or `(uses := [name])` to add explicit ones.
+Use `excludes` to remove inferred dependencies, or `uses` to add explicit ones.
 
 ## Core Data Structures
 
@@ -117,13 +219,22 @@ Represents a single blueprint declaration:
 
 ```lean
 structure Node where
-  name : Name           -- Lean name (e.g., `MyModule.myTheorem`)
-  latexLabel : String   -- LaTeX label (e.g., "thm:my-theorem")
-  statement : NodePart  -- Statement with text and dependencies
-  proof : Option NodePart
-  notReady : Bool
-  discussion : Option Nat
-  title : Option String
+  name : Name                    -- Lean name (e.g., `MyModule.myTheorem`)
+  latexLabel : String            -- LaTeX label (e.g., "thm:my-theorem")
+  statement : NodePart           -- Statement with text and dependencies
+  proof : Option NodePart        -- Optional proof part
+  status : NodeStatus            -- notReady, stated, ready, sorry, proven, etc.
+  discussion : Option Nat        -- GitHub issue number
+  title : Option String          -- Short title for LaTeX
+  -- Dashboard metadata (new in this fork):
+  displayName : Option String    -- Custom graph label
+  keyDeclaration : Bool          -- Highlight in Key Theorems
+  message : Option String        -- User notes
+  priorityItem : Bool            -- Attention column flag
+  blocked : Option String        -- Blockage reason
+  potentialIssue : Option String -- Known concerns
+  technicalDebt : Option String  -- Cleanup notes
+  misc : Option String           -- Miscellaneous notes
 ```
 
 ### NodePart
@@ -137,7 +248,21 @@ structure NodePart where
   excludes : Array Name         -- Excluded from inference
   usesLabels : Array String     -- Dependencies by LaTeX label
   excludesLabels : Array String
-  latexEnv : String            -- LaTeX environment name
+  latexEnv : String             -- LaTeX environment name
+```
+
+### NodeStatus
+
+```lean
+inductive NodeStatus where
+  | notReady     -- Work in progress, not ready for use
+  | stated       -- Statement only, no proof
+  | ready        -- Ready to be proven
+  | sorry        -- Contains sorry
+  | proven       -- Proof complete
+  | fullyProven  -- Proof complete with all dependencies proven
+  | mathlibReady -- Ready for mathlib contribution
+  | inMathlib    -- Already in mathlib
 ```
 
 ### Environment Extensions
@@ -190,7 +315,7 @@ Works with `to_additive`:
 
 | Module | Purpose |
 |--------|---------|
-| `Architect.Basic` | `Node`, `NodePart`, environment extensions |
+| `Architect.Basic` | `Node`, `NodePart`, `NodeStatus`, environment extensions |
 | `Architect.Attribute` | `@[blueprint]` attribute syntax and elaboration |
 | `Architect.CollectUsed` | Dependency inference from constant values |
 | `Architect.Command` | `blueprint_comment` command |
@@ -210,58 +335,8 @@ This allows projects to use `@[blueprint]` without SubVerso/Verso compilation ov
 ## Related Projects
 
 - **[Dress](https://github.com/e-vergo/Dress)** — Artifact generator (highlighting, HTML, LaTeX)
-- **[leanblueprint](https://github.com/e-vergo/leanblueprint)** — Website/PDF generator consuming Dress artifacts
+- **[Runway](https://github.com/e-vergo/Runway)** — Website/dashboard/PDF generator consuming Dress artifacts
 - **[Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)** — Upstream project this is forked from
-
-## Fork Changes
-
-This fork ([e-vergo/LeanArchitect](https://github.com/e-vergo/LeanArchitect)) diverges from [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with a **metadata-only architecture**: artifact generation (LaTeX, JSON, syntax highlighting) has been moved to [Dress](https://github.com/e-vergo/Dress).
-
-### Diff Summary
-
-```text
- 8 files changed, 172 insertions(+), 584 deletions(-)
-```
-
-### Removed Components
-
-| Component | Purpose | New Location |
-|-----------|---------|--------------|
-| `Main.lean` | CLI executable (`extract_blueprint`) | Dress |
-| `Cli` dependency | Command-line argument parsing | Dress |
-| Lake facets (`blueprint`, `blueprintJson`) | Module/library/package extraction | Dress |
-| `blueprintConvert` script | Migration from legacy format | Dress |
-| `Architect.Content` import | Rendering infrastructure | Dress (via SubVerso/Verso) |
-
-### Modified Files
-
-| File | Change |
-|------|--------|
-| `lakefile.lean` | Removed `extract_blueprint` executable, Lake facets, and `Cli` dependency. Now exports only `Architect` library. |
-| `Architect/Attribute.lean` | Changed import from `Architect.Content` to `Architect.Basic` (content rendering moved to Dress). |
-| `lake-manifest.json` | Removed `Cli` package. Single dependency on `batteries`. |
-| `lean-toolchain` | Updated to current Mathlib-compatible toolchain. |
-
-### Architectural Rationale
-
-Upstream LeanArchitect bundles metadata collection with artifact generation. This fork separates concerns:
-
-1. **LeanArchitect** — `@[blueprint]` attribute, `Node`/`NodePart` structures, dependency inference, environment extensions
-2. **Dress** — SubVerso syntax highlighting, Verso HTML rendering, LaTeX output, Lake build facets
-
-Benefits:
-
-- Projects needing only `@[blueprint]` metadata avoid SubVerso/Verso compilation overhead
-- Dress can evolve rendering independently of the core attribute semantics
-- Cleaner dependency graph for downstream consumers
-
-### Dependency Comparison
-
-| | Upstream | This Fork |
-|-|----------|-----------|
-| `batteries` | Yes | Yes |
-| `Cli` | Yes | No |
-| SubVerso/Verso | Transitive | No (moved to Dress) |
 
 ## License
 
