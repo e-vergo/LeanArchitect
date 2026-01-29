@@ -122,7 +122,28 @@ structure Node where
   technicalDebt : Option String := none
   /-- Miscellaneous notes -/
   misc : Option String := none
-deriving Inhabited, Repr, FromJson, ToJson, ToExpr
+deriving Inhabited, Repr, FromJson, ToJson
+
+/-- Manual ToExpr instance for Node to ensure all fields including status are serialized.
+    The derived instance has issues with fields that have default values. -/
+instance : ToExpr Node where
+  toTypeExpr := mkConst ``Node
+  toExpr n := Lean.mkAppN (mkConst ``Node.mk) #[
+    toExpr n.name,
+    toExpr n.latexLabel,
+    toExpr n.statement,
+    toExpr n.proof,
+    toExpr n.status,  -- Explicitly include status
+    toExpr n.discussion,
+    toExpr n.title,
+    toExpr n.keyDeclaration,
+    toExpr n.message,
+    toExpr n.priorityItem,
+    toExpr n.blocked,
+    toExpr n.potentialIssue,
+    toExpr n.technicalDebt,
+    toExpr n.misc
+  ]
 
 /-- Backwards compatibility: check if a node is marked as not ready. -/
 def Node.notReady (n : Node) : Bool := n.status == .notReady
