@@ -1,5 +1,8 @@
 # LeanArchitect
 
+![Lean](https://img.shields.io/badge/Lean-v4.27.0-blue)
+![License](https://img.shields.io/badge/License-Apache%202.0-green)
+
 The `@[blueprint]` attribute for formalization documentation.
 
 LeanArchitect is a lightweight Lean 4 library that marks declarations for inclusion in mathematical formalization blueprints. It stores metadata about theorems, definitions, and their dependencies without any artifact generation.
@@ -361,14 +364,39 @@ Artifact generation has been **moved to [Dress](https://github.com/e-vergo/Dress
 
 Eight metadata fields and three status flags added to support dashboard and project management features, as documented above.
 
+### 3. Manual ToExpr Instance
+
+The `Node` structure uses a manual `ToExpr` instance instead of deriving. Lean's derived `ToExpr` for structures with default field values does not correctly serialize all fields through the environment extension. The manual instance ensures status and all metadata fields persist correctly.
+
+```lean
+-- In Architect/Basic.lean
+instance : ToExpr Node where
+  toTypeExpr := mkConst ``Node
+  toExpr n := mkApp14 (mkConst ``Node.mk) ...
+```
+
 ## Related Projects
+
+### Toolchain Build Order
+
+```
+SubVerso -> LeanArchitect -> Dress -> Runway
+```
+
+LeanArchitect only depends on `batteries`. SubVerso is built first because Dress requires both.
+
+**Downstream** (depend on LeanArchitect):
+| Project | Purpose |
+|---------|---------|
+| [Dress](https://github.com/e-vergo/Dress) | Artifact generator (highlighting, HTML, LaTeX, graph layout) |
+| [Runway](https://github.com/e-vergo/Runway) | Website/dashboard/PDF generator |
+| [SubVerso](https://github.com/e-vergo/subverso) | Syntax highlighting extraction (used by Dress) |
+
+### Other Projects
 
 | Project | Purpose |
 |---------|---------|
-| [Dress](https://github.com/e-vergo/Dress) | Artifact generator (highlighting, HTML, LaTeX) |
-| [Runway](https://github.com/e-vergo/Runway) | Website/dashboard/PDF generator |
-| [SubVerso](https://github.com/e-vergo/subverso) | Syntax highlighting extraction |
-| [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project |
+| [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project (16 nodes, all 6 status colors) |
 | [dress-blueprint-action](https://github.com/e-vergo/dress-blueprint-action) | GitHub Actions CI/CD |
 | [Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) | Upstream project |
 
