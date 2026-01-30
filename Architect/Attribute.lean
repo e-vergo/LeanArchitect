@@ -266,34 +266,6 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
 
--- register_option blueprint.checkCyclicUses : Bool := {
---   defValue := true,
---   descr := "Whether to check for cyclic dependencies in the blueprint."
--- }
-
--- TODO: remove
--- /--
--- Raises an error if `newLabel` occurs in the (irreflexive transitive) dependencies of `label`.
--- If ignored, this would create a cycle and then an error during `leanblueprint web`.
--- -/
--- partial def checkCyclicUses {m} [Monad m] [MonadEnv m] [MonadError m]
---     (newLabel : String) (label : String)
---     (visited : Std.HashSet String := ∅) (path : Array String := #[]) : m Unit := do
---   let path' := path.push label
---   if visited.contains label then
---     if path.contains label then
---       throwError "cyclic dependency in blueprint:\n  {" uses ".intercalate (path'.toList.map toString)}"
---     else
---       return
---   let visited' := visited.insert label
-
---   for name in getLeanNamesOfLatexLabel (← getEnv) label do
---     if let some node := blueprintExt.find? (← getEnv) name then
---       for used in node.statement.uses ++ (node.proof.map (·.uses) |>.getD #[]) do
---         checkCyclicUses newLabel used visited' path'
---     else
---       throwError "unknown constant {name} in blueprint"
-
 initialize registerBuiltinAttribute {
     name := `blueprint
     descr := "Adds a node to the blueprint"
@@ -307,10 +279,6 @@ initialize registerBuiltinAttribute {
       blueprintExt.add name node
       modifyEnv fun env => addLeanNameOfLatexLabel env node.latexLabel name
       trace[blueprint] "Blueprint node added:\n{repr node}"
-
-      -- pushInfoLeaf <| .ofTermInfo {
-      --   elaborator := .anonymous, lctx := {}, expectedType? := none,
-      --   stx, expr := toExpr node }
   }
 
 end Architect
