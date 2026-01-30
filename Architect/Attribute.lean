@@ -29,8 +29,8 @@ structure Config where
   proofUsesLabels : Array String := #[]
   /-- The set of labels to exclude from `proofUsesLabels`. -/
   proofExcludesLabels : Array String := #[]
-  /-- The manually-set status of the node. Defaults to `.stated`. -/
-  status : NodeStatus := .stated
+  /-- The manually-set status of the node. Defaults to `.notReady`. -/
+  status : NodeStatus := .notReady
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat := none
   /-- The short title of the node in LaTeX. -/
