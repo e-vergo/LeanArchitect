@@ -12,68 +12,66 @@ initialize registerTraceClass `blueprint.timing
 
 /-- Status of a blueprint node for visualization.
 
-    There are 8 possible statuses, determined as follows:
-    - `notReady`: Manual flag via `@[blueprint (notReady)]`
-    - `stated`: Default (in blueprint but no Lean decl yet, or no manual status)
-    - `ready`: Manual flag via `@[blueprint (ready)]`
+    There are 6 possible statuses:
+    - `notReady`: Default + Manual - not ready/not formalized (blueprint only, no Lean decl)
+    - `ready`: Manual flag via `@[blueprint (ready)]` - ready to formalize
     - `sorry`: Derived - has `sorryAx` in proof
     - `proven`: Derived - formalized without sorry
-    - `fullyProven`: Auto-computed from graph (this + all deps proven)
-    - `mathlibReady`: Manual flag via `@[blueprint (mathlibReady)]`
-    - `inMathlib`: Derived (module prefix) OR manual override
+    - `fullyProven`: Auto-computed - this node AND all ancestors are proven/fullyProven
+    - `mathlibReady`: Manual flag via `@[blueprint (mathlibReady)]` - highest priority, ready for/in mathlib
 
-    The `sorry` and `fullyProven` statuses only apply to theorems/lemmas (ellipse shape),
-    not definitions (box shape). -/
+    Status determination order (highest to lowest priority):
+    1. `mathlibReady` - if manually set
+    2. `fullyProven` - auto-computed if this + all deps proven
+    3. `sorry` - if proof contains sorryAx
+    4. `proven` - if formalized without sorry
+    5. `ready` - if manually set
+    6. `notReady` - default -/
 inductive NodeStatus where
-  | notReady     -- Manual: not ready to formalize
-  | stated       -- Default: statement exists in blueprint
+  | notReady     -- Default + Manual: not ready/not formalized
   | ready        -- Manual: ready to formalize
   | sorry        -- Derived: has sorryAx in proof
   | proven       -- Derived: formalized without sorry
-  | fullyProven  -- Auto-computed: this + all ancestors proven
-  | mathlibReady -- Manual: ready to upstream to Mathlib
-  | inMathlib    -- Derived or manual: already in Mathlib
+  | fullyProven  -- Auto-computed: this + all ancestors proven/fullyProven
+  | mathlibReady -- Manual: highest priority, ready for/in mathlib
   deriving Repr, Inhabited, BEq, DecidableEq
 
 instance : Inhabited NodeStatus where
-  default := .stated
+  default := .notReady
 
 instance : ToJson NodeStatus where
   toJson
     | .notReady => "notReady"
-    | .stated => "stated"
     | .ready => "ready"
     | .sorry => "sorry"
     | .proven => "proven"
     | .fullyProven => "fullyProven"
     | .mathlibReady => "mathlibReady"
-    | .inMathlib => "inMathlib"
 
 instance : FromJson NodeStatus where
   fromJson? json := do
     let s ← json.getStr?
     match s with
     | "notReady" => pure .notReady
-    | "stated" => pure .stated
     | "ready" => pure .ready
     | "sorry" => pure .sorry
     | "proven" => pure .proven
     | "fullyProven" => pure .fullyProven
     | "mathlibReady" => pure .mathlibReady
-    | "inMathlib" => pure .inMathlib
+    -- Backwards compatibility: map old statuses to new ones
+    | "stated" => pure .notReady
+    | "inMathlib" => pure .mathlibReady
     | _ => throw s!"unknown NodeStatus: {s}"
 
 instance : ToExpr NodeStatus where
   toTypeExpr := mkConst ``NodeStatus
   toExpr
     | .notReady => mkConst ``NodeStatus.notReady
-    | .stated => mkConst ``NodeStatus.stated
     | .ready => mkConst ``NodeStatus.ready
     | .sorry => mkConst ``NodeStatus.sorry
     | .proven => mkConst ``NodeStatus.proven
     | .fullyProven => mkConst ``NodeStatus.fullyProven
     | .mathlibReady => mkConst ``NodeStatus.mathlibReady
-    | .inMathlib => mkConst ``NodeStatus.inMathlib
 
 /-- The statement or proof of a node. -/
 structure NodePart where
@@ -103,7 +101,7 @@ structure Node where
   proof : Option NodePart
   /-- The manually-set status of the node from the @[blueprint] attribute.
       This is the "input" status that may be overridden by derived statuses. -/
-  status : NodeStatus := .stated
+  status : NodeStatus := .notReady
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat
   /-- The short title of the node in LaTeX. Also used as custom display name for dependency graph if set. -/

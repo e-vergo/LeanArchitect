@@ -88,12 +88,11 @@ syntax blueprintProofOption := &"proof" " := " plainDocComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
--- Status options (only one should be set; later ones override earlier)
+-- Status options (only 3 manual flags: notReady, ready, mathlibReady)
+-- fullyProven is auto-computed via graph traversal, inMathlib was removed
 syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
 syntax blueprintReadyOption := &"ready" " := " (&"true" <|> &"false")
 syntax blueprintMathlibReadyOption := &"mathlibReady" " := " (&"true" <|> &"false")
-syntax blueprintMathlibOption := &"mathlib" " := " (&"true" <|> &"false")
-syntax blueprintFullyProvenOption := &"fullyProven" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
 syntax blueprintLatexLabelOption := &"latexLabel" " := " str
@@ -112,8 +111,7 @@ syntax blueprintOption := "("
   blueprintUsesOption <|> blueprintProofUsesOption <|>
   blueprintTitleOption <|>
   blueprintNotReadyOption <|> blueprintReadyOption <|>
-  blueprintMathlibReadyOption <|> blueprintMathlibOption <|>
-  blueprintFullyProvenOption <|>
+  blueprintMathlibReadyOption <|>
   blueprintDiscussionOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption <|>
   blueprintKeyDeclarationOption <|> blueprintMessageOption <|>
@@ -133,12 +131,11 @@ You may optionally add:
 - `uses := [a, "b"]`: The dependencies of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `proofUses := [a, "b"]`: The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `title := /-- Title -/`: The title of the node in LaTeX.
-- Status options (only one should be used):
+- Status options (3 manual flags):
   - `notReady := true`: The node is not ready to formalize (needs more blueprint work).
   - `ready := true`: The node is ready to formalize.
-  - `fullyProven := true`: Mark as fully proven (this + all dependencies proven).
   - `mathlibReady := true`: The node is ready to upstream to Mathlib.
-  - `mathlib := true`: Manual override to mark as already in Mathlib.
+  Note: `fullyProven` status is auto-computed via graph traversal (not a manual flag).
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
 - Dashboard/metadata options:
@@ -201,14 +198,6 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (mathlibReady := true)) =>
         config := { config with status := .mathlibReady }
       | `(blueprintOption| (mathlibReady := false)) =>
-        pure () -- no-op
-      | `(blueprintOption| (mathlib := true)) =>
-        config := { config with status := .inMathlib }
-      | `(blueprintOption| (mathlib := false)) =>
-        pure () -- no-op
-      | `(blueprintOption| (fullyProven := true)) =>
-        config := { config with status := .fullyProven }
-      | `(blueprintOption| (fullyProven := false)) =>
         pure () -- no-op
       | `(blueprintOption| (discussion := $n)) =>
         config := { config with discussion := n.getNat }

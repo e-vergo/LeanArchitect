@@ -62,20 +62,20 @@ lemma urgentFix : ... := ...
 theorem needsCleanup : ... := ...
 ```
 
-### Status Flags (5)
+### Status Flags (3)
 
 | Option | Type | Sets Status To |
 |--------|------|----------------|
-| `notReady` | `Bool` | `notReady` - not ready to formalize (red/gray) |
-| `ready` | `Bool` | `ready` - ready to formalize (orange) |
-| `fullyProven` | `Bool` | `fullyProven` - fully proven with all deps (dark green) |
-| `mathlibReady` | `Bool` | `mathlibReady` - ready for mathlib (purple) |
-| `mathlib` | `Bool` | `inMathlib` - already in mathlib (dark blue) |
+| `notReady` | `Bool` | `notReady` - not ready to formalize (sandy brown) |
+| `ready` | `Bool` | `ready` - ready to formalize (light sea green) |
+| `mathlibReady` | `Bool` | `mathlibReady` - ready for mathlib (light blue) |
+
+**Note**: `fullyProven` is auto-computed (proven + all ancestors proven/fullyProven), not a manual flag.
 
 **Examples:**
 
 ```lean
--- Not ready to formalize yet
+-- Not ready to formalize yet (default status)
 @[blueprint "thm:future" (notReady := true)]
 theorem futureWork : ... := sorry
 
@@ -83,35 +83,25 @@ theorem futureWork : ... := sorry
 @[blueprint "lem:ready" (ready := true)]
 lemma readyToProve : ... := sorry
 
--- Fully proven with all dependencies
-@[blueprint "thm:complete" (fullyProven := true)]
-theorem complete_with_all_deps : ... := ...
-
 -- Ready for mathlib contribution
 @[blueprint "thm:upstream" (mathlibReady := true)]
 theorem readyForMathlib : ... := ...
-
--- Already in mathlib (manual override)
-@[blueprint "thm:existing" (mathlib := true)]
-theorem alreadyInMathlib : ... := ...
 ```
 
-### Node Status Types (8)
+### Node Status Types (6)
 
-The dependency graph displays 8 possible statuses with distinct colors:
+The dependency graph displays 6 possible statuses with distinct colors:
 
-| Status | Color | Source |
-|--------|-------|--------|
-| `notReady` | Red/Gray | Manual: `(notReady := true)` |
-| `stated` | Light Blue | Default (no Lean code or no manual status) |
-| `ready` | Orange | Manual: `(ready := true)` |
-| `sorry` | Yellow | Derived: proof contains `sorry` |
-| `proven` | Light Green | Derived: complete proof without sorry |
-| `fullyProven` | Dark Green | Manual: `(fullyProven := true)` |
-| `mathlibReady` | Purple | Manual: `(mathlibReady := true)` |
-| `inMathlib` | Dark Blue | Manual: `(mathlib := true)` or derived from module prefix |
+| Status | Color | Hex | Source |
+|--------|-------|-----|--------|
+| `notReady` | Sandy Brown | #F4A460 | Default + Manual: `(notReady := true)` |
+| `ready` | Light Sea Green | #20B2AA | Manual: `(ready := true)` |
+| `sorry` | Dark Red | #8B0000 | Auto: proof contains `sorryAx` |
+| `proven` | Light Green | #90EE90 | Auto: complete proof without sorry |
+| `fullyProven` | Forest Green | #228B22 | Auto-computed: proven + all ancestors proven/fullyProven |
+| `mathlibReady` | Light Blue | #87CEEB | Manual: `(mathlibReady := true)` |
 
-The `sorry` and `proven` statuses are automatically derived by analyzing the proof term. Manual flags take precedence.
+The `sorry` and `proven` statuses are automatically derived by analyzing the proof term. The `fullyProven` status is auto-computed when a node is proven and all its ancestors are also proven or fullyProven. Manual flags take precedence.
 
 ### Dependency Options
 
@@ -314,14 +304,12 @@ structure NodePart where
 
 ```lean
 inductive NodeStatus where
-  | notReady     -- Work in progress, not ready for use
-  | stated       -- Statement only, no proof
+  | notReady     -- Not ready to formalize (default)
   | ready        -- Ready to be proven
-  | sorry        -- Contains sorry
+  | sorry        -- Contains sorryAx
   | proven       -- Proof complete
-  | fullyProven  -- Proof complete with all dependencies proven
+  | fullyProven  -- Auto-computed: proven + all ancestors proven/fullyProven
   | mathlibReady -- Ready for mathlib contribution
-  | inMathlib    -- Already in mathlib
 ```
 
 ### Environment Extensions
@@ -371,7 +359,7 @@ Artifact generation has been **moved to [Dress](https://github.com/e-vergo/Dress
 
 ### 2. New Metadata Fields
 
-Eight metadata fields and five status flags added to support dashboard and project management features, as documented above.
+Eight metadata fields and three status flags added to support dashboard and project management features, as documented above.
 
 ## Related Projects
 
