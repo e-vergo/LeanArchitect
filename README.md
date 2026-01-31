@@ -1,20 +1,35 @@
 # LeanArchitect
 
-![Lean](https://img.shields.io/badge/Lean-v4.27.0-blue)
-![License](https://img.shields.io/badge/License-Apache%202.0-green)
+The `@[blueprint]` attribute for Lean 4 formalization documentation.
 
-The `@[blueprint]` attribute for formalization documentation.
+LeanArchitect marks declarations for inclusion in mathematical formalization blueprints. It stores metadata about theorems, definitions, and their dependencies without generating artifacts.
 
-LeanArchitect is a lightweight Lean 4 library that marks declarations for inclusion in mathematical formalization blueprints. It stores metadata about theorems, definitions, and their dependencies without any artifact generation.
+**Fork**: This is a fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with architectural changes (metadata-only design, additional dashboard fields). See [Fork Changes](#fork-changes) for details.
 
-> **Fork Status**: This is a fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with significant architectural changes. See [Fork Changes](#fork-changes) for details.
+## Installation
 
-## Usage
+For full blueprint functionality with syntax highlighting, use [Dress](https://github.com/e-vergo/Dress) (which re-exports LeanArchitect):
 
-### Basic Attribute
+```toml
+[[require]]
+name = "Dress"
+git = "https://github.com/e-vergo/Dress"
+rev = "main"
+```
+
+For metadata-only usage without artifact generation:
+
+```toml
+[[require]]
+name = "LeanArchitect"
+git = "https://github.com/e-vergo/LeanArchitect"
+rev = "main"
+```
+
+## Basic Usage
 
 ```lean
-import Architect  -- or `import Dress` for full artifact generation
+import Architect
 
 /-- The sum of two even numbers is even. -/
 @[blueprint "lem:even-sum"]
@@ -23,6 +38,10 @@ theorem even_add_even (a b : Nat) (ha : Even a) (hb : Even b) : Even (a + b) := 
   obtain ⟨l, hl⟩ := hb
   exact ⟨k + l, by omega⟩
 ```
+
+The string argument (`"lem:even-sum"`) is the LaTeX label used in the blueprint document.
+
+## Attribute Options
 
 ### Metadata Options (8)
 
@@ -37,8 +56,6 @@ theorem even_add_even (a b : Nat) (ha : Even a) (hb : Even b) : Even (a + b) := 
 | `technicalDebt` | `String` | Technical debt / cleanup notes |
 | `misc` | `String` | Catch-all miscellaneous notes |
 
-**Examples:**
-
 ```lean
 -- Key theorem highlighted in dashboard
 @[blueprint "thm:main" (keyDeclaration := true)]
@@ -48,7 +65,7 @@ theorem mainTheorem : ... := ...
 @[blueprint "lem:helper" (message := "Used in main proof chain")]
 lemma helperLemma : ... := ...
 
--- Custom title for cleaner graph labels
+-- Custom title for graph display
 @[blueprint "thm:sqrt2" (title := "Sqrt 2 Irrational")]
 theorem sqrt2_irrational : ... := ...
 
@@ -65,7 +82,7 @@ lemma urgentFix : ... := ...
 theorem needsCleanup : ... := ...
 ```
 
-### Status Flags (3)
+### Manual Status Flags (3)
 
 | Option | Type | Sets Status To |
 |--------|------|----------------|
@@ -73,12 +90,8 @@ theorem needsCleanup : ... := ...
 | `ready` | `Bool` | `ready` - ready to formalize (light sea green) |
 | `mathlibReady` | `Bool` | `mathlibReady` - ready for mathlib (light blue) |
 
-**Note**: `fullyProven` is auto-computed (proven + all ancestors proven/fullyProven), not a manual flag.
-
-**Examples:**
-
 ```lean
--- Not ready to formalize yet (default status)
+-- Not ready to formalize yet
 @[blueprint "thm:future" (notReady := true)]
 theorem futureWork : ... := sorry
 
@@ -91,41 +104,41 @@ lemma readyToProve : ... := sorry
 theorem readyForMathlib : ... := ...
 ```
 
-### Node Status Types (6)
+### Node Status Model (6 States)
 
-The dependency graph displays 6 possible statuses with distinct colors:
+The dependency graph displays 6 possible statuses:
 
 | Status | Color | Hex | Source |
 |--------|-------|-----|--------|
-| `notReady` | Sandy Brown | #F4A460 | Default + Manual: `(notReady := true)` |
-| `ready` | Light Sea Green | #20B2AA | Manual: `(ready := true)` |
-| `sorry` | Dark Red | #8B0000 | Auto: proof contains `sorryAx` |
-| `proven` | Light Green | #90EE90 | Auto: complete proof without sorry |
-| `fullyProven` | Forest Green | #228B22 | Auto-computed: proven + all ancestors proven/fullyProven |
-| `mathlibReady` | Light Blue | #87CEEB | Manual: `(mathlibReady := true)` |
+| `notReady` | Sandy Brown | #F4A460 | Default or manual `(notReady := true)` |
+| `ready` | Light Sea Green | #20B2AA | Manual `(ready := true)` |
+| `sorry` | Dark Red | #8B0000 | Auto-derived: proof contains `sorryAx` |
+| `proven` | Light Green | #90EE90 | Auto-derived: complete proof without sorry |
+| `fullyProven` | Forest Green | #228B22 | Auto-computed: proven and all ancestors proven/fullyProven |
+| `mathlibReady` | Light Blue | #87CEEB | Manual `(mathlibReady := true)` |
 
-The `sorry` and `proven` statuses are automatically derived by analyzing the proof term. The `fullyProven` status is auto-computed when a node is proven and all its ancestors are also proven or fullyProven. Manual flags take precedence.
+**Status priority** (highest to lowest):
+1. `mathlibReady` - if manually set
+2. `fullyProven` - auto-computed if this node and all dependencies are proven
+3. `sorry` - if proof contains sorryAx
+4. `proven` - if formalized without sorry
+5. `ready` - if manually set
+6. `notReady` - default
+
+The `fullyProven` status is computed via graph traversal during artifact generation. It cannot be set manually.
 
 ### Dependency Options
 
 ```lean
 @[blueprint "thm:main"
-  (title := "Main Theorem")
-  (statement := /-- Custom statement text for LaTeX -/)
-  (proof := /-- Custom proof explanation -/)
   (uses := [lem_helper, thm_base])           -- Statement dependencies
   (excludes := [-lem_internal])              -- Exclude from inference
   (proofUses := [lem_technical])             -- Proof-only dependencies
-  (proofExcludes := [-lem_auto])             -- Exclude from proof inference
-  (status := .stated)                        -- Manual status override
-  (discussion := 42)                         -- GitHub issue number
-  (latexEnv := "theorem")]                   -- LaTeX environment
+  (proofExcludes := [-lem_auto])]            -- Exclude from proof inference
 theorem mainTheorem : ... := ...
 ```
 
-### Label-Based Dependencies
-
-Dependencies can reference other nodes by LaTeX label instead of Lean name:
+Dependencies can reference other nodes by LaTeX label:
 
 ```lean
 @[blueprint "thm:c"
@@ -134,20 +147,40 @@ Dependencies can reference other nodes by LaTeX label instead of Lean name:
 theorem thmC : ... := ...
 ```
 
-### Proof-Specific Dependencies
-
-Distinguish dependencies that appear only in proofs vs. statements:
-
 | Field | Purpose |
 |-------|---------|
-| `proofUses` | Dependencies used only in the proof (solid edges in graph) |
+| `uses` | Statement dependencies (dashed edges in graph) |
+| `excludes` | Exclude inferred statement dependencies |
+| `proofUses` | Proof-only dependencies (solid edges in graph) |
 | `proofExcludes` | Exclude inferred proof dependencies |
+| `usesLabels` | Same as `uses`, by LaTeX label |
 | `proofUsesLabels` | Same as `proofUses`, by LaTeX label |
+| `excludesLabels` | Same as `excludes`, by LaTeX label |
 | `proofExcludesLabels` | Same as `proofExcludes`, by LaTeX label |
 
-This enables dashed edges (statement dependencies) vs. solid edges (proof dependencies) in the dependency graph.
+### Content Options
 
-### Dependency Inference
+```lean
+@[blueprint "thm:main"
+  (statement := /-- Custom statement text for LaTeX -/)
+  (proof := /-- Custom proof explanation -/)
+  (hasProof := true)                          -- Force proof part (default: true for theorems)
+  (latexEnv := "lemma")                       -- LaTeX environment
+  (latexLabel := "thm:custom-label")          -- Override label
+  (discussion := 42)]                         -- GitHub issue number
+theorem mainTheorem : ... := ...
+```
+
+### Debugging
+
+Use `blueprint?` to display the raw node data:
+
+```lean
+@[blueprint? "thm:debug"]
+theorem debugExample : ... := ...
+```
+
+## Dependency Inference
 
 LeanArchitect automatically infers dependencies by analyzing which constants a declaration uses:
 
@@ -164,64 +197,6 @@ theorem thmC : ... := by
 ```
 
 Use `excludes` to remove inferred dependencies, or `uses` to add explicit ones.
-
-## Role in Dependency Chain
-
-```
-SubVerso -> LeanArchitect -> Dress -> Runway
-```
-
-LeanArchitect is the **metadata layer** in the blueprint toolchain:
-
-```
-+---------------------------------------------------------------------+
-|                     YOUR LEAN PROJECT                               |
-|                                                                     |
-|  @[blueprint "thm:foo"]                                             |
-|  theorem foo : P -> Q := ...                                        |
-+---------------------------------------------------------------------+
-           |                              |
-           | Metadata only                | + Artifact generation
-           v                              v
-+---------------------+    +---------------------------------------------+
-|   LEANARCHITECT     |    |                DRESS                        |
-|   (this library)    |    |   (recommended for most projects)           |
-+---------------------+    +---------------------------------------------+
-| - @[blueprint] attr |    | - Re-exports LeanArchitect                  |
-| - Node/NodePart     |    | - SubVerso syntax highlighting              |
-| - Dependency infer  |    | - Verso HTML rendering                      |
-| - Dashboard fields  |    | - LaTeX with embedded hover data            |
-| - NO SubVerso/Verso |    | - Dressed artifacts for Runway              |
-| - Fast compilation  |    | - Lake facets (blueprint, blueprintJson)    |
-+---------------------+    +---------------------------------------------+
-                                          |
-                                          v
-                           +---------------------------------------------+
-                           |               RUNWAY                        |
-                           |  Consumes Dress artifacts to produce       |
-                           |  interactive website + dashboard + PDF      |
-                           +---------------------------------------------+
-```
-
-## Installation
-
-**Recommended:** For full blueprint functionality with syntax highlighting, import Dress (which re-exports LeanArchitect):
-
-```toml
-[[require]]
-name = "Dress"
-git = "https://github.com/e-vergo/Dress"
-rev = "main"
-```
-
-If you only need the `@[blueprint]` attribute without artifact generation:
-
-```toml
-[[require]]
-name = "LeanArchitect"
-git = "https://github.com/e-vergo/LeanArchitect"
-rev = "main"
-```
 
 ## Additional Features
 
@@ -264,11 +239,9 @@ Works with `to_additive`:
 @[to_additive (attr := blueprint "thm:b")] theorem b_mul : ...
 ```
 
-## Core Data Structures
+## Data Structures
 
 ### Node
-
-Represents a single blueprint declaration:
 
 ```lean
 structure Node where
@@ -276,10 +249,9 @@ structure Node where
   latexLabel : String            -- LaTeX label (e.g., "thm:my-theorem")
   statement : NodePart           -- Statement with text and dependencies
   proof : Option NodePart        -- Optional proof part
-  status : NodeStatus            -- notReady, stated, ready, sorry, proven, etc.
+  status : NodeStatus            -- notReady, ready, sorry, proven, fullyProven, mathlibReady
   discussion : Option Nat        -- GitHub issue number
-  title : Option String          -- Short title for LaTeX / custom graph label
-  -- Dashboard metadata:
+  title : Option String          -- Custom title / graph label
   keyDeclaration : Bool          -- Highlight in Key Theorems
   message : Option String        -- User notes
   priorityItem : Bool            -- Attention column flag
@@ -290,8 +262,6 @@ structure Node where
 ```
 
 ### NodePart
-
-Represents the statement or proof of a node:
 
 ```lean
 structure NodePart where
@@ -307,12 +277,12 @@ structure NodePart where
 
 ```lean
 inductive NodeStatus where
-  | notReady     -- Not ready to formalize (default)
-  | ready        -- Ready to be proven
-  | sorry        -- Contains sorryAx
-  | proven       -- Proof complete
+  | notReady     -- Default: not ready to formalize
+  | ready        -- Manual: ready to be proven
+  | sorry        -- Derived: contains sorryAx
+  | proven       -- Derived: proof complete
   | fullyProven  -- Auto-computed: proven + all ancestors proven/fullyProven
-  | mathlibReady -- Ready for mathlib contribution
+  | mathlibReady -- Manual: ready for mathlib contribution
 ```
 
 ### Environment Extensions
@@ -328,78 +298,105 @@ inductive NodeStatus where
 | `Architect.Attribute` | `@[blueprint]` attribute syntax and elaboration |
 | `Architect.CollectUsed` | Dependency inference from constant values |
 | `Architect.Command` | `blueprint_comment` command |
+| `Architect.Content` | `BlueprintContent` type for module contents |
+| `Architect.Load` | Loading nodes from environment |
 | `Architect.Tactic` | `sorry_using`, `blueprint_using` tactics |
+
+## Role in Toolchain
+
+```
+SubVerso -> LeanArchitect -> Dress -> Runway
+```
+
+LeanArchitect is the metadata layer:
+
+```
++---------------------------------------------------------------------+
+|                     YOUR LEAN PROJECT                               |
+|                                                                     |
+|  @[blueprint "thm:foo"]                                             |
+|  theorem foo : P -> Q := ...                                        |
++---------------------------------------------------------------------+
+           |                              |
+           | Metadata only                | + Artifact generation
+           v                              v
++---------------------+    +---------------------------------------------+
+|   LEANARCHITECT     |    |                DRESS                        |
+|   (this library)    |    |   (recommended for most projects)           |
++---------------------+    +---------------------------------------------+
+| - @[blueprint] attr |    | - Re-exports LeanArchitect                  |
+| - Node/NodePart     |    | - SubVerso syntax highlighting              |
+| - Dependency infer  |    | - Verso HTML rendering                      |
+| - Dashboard fields  |    | - LaTeX with embedded hover data            |
+| - NO SubVerso/Verso |    | - Dressed artifacts for Runway              |
+| - Fast compilation  |    | - Lake facets (blueprint, blueprintJson)    |
++---------------------+    +---------------------------------------------+
+                                          |
+                                          v
+                           +---------------------------------------------+
+                           |               RUNWAY                        |
+                           |  Consumes Dress artifacts to produce       |
+                           |  interactive website + dashboard + PDF      |
+                           +---------------------------------------------+
+```
 
 ## Fork Changes
 
-This fork ([e-vergo/LeanArchitect](https://github.com/e-vergo/LeanArchitect)) diverges from [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with two major changes:
+This fork ([e-vergo/LeanArchitect](https://github.com/e-vergo/LeanArchitect)) diverges from [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect):
 
 ### 1. Metadata-Only Architecture
 
-Artifact generation has been **moved to [Dress](https://github.com/e-vergo/Dress)**. This fork removes:
+Artifact generation moved to [Dress](https://github.com/e-vergo/Dress). Removed components:
 
-| Removed Component | Purpose | New Location |
-|-------------------|---------|--------------|
-| `Main.lean` | CLI executable (`extract_blueprint`) | Dress |
-| `Cli` dependency | Command-line argument parsing | Dress |
-| Lake facets | `blueprint`, `blueprintJson` extraction | Dress |
-| `Architect.Content` | Rendering infrastructure | Dress (via SubVerso/Verso) |
-| `blueprintConvert` script | Migration from legacy format | Dress |
-
-**Benefits**:
-- Projects needing only `@[blueprint]` metadata avoid SubVerso/Verso compilation overhead
-- Single dependency on `batteries` (no Cli, no SubVerso/Verso transitives)
-- Faster compilation for projects not generating artifacts
-- Cleaner separation of concerns: metadata collection vs. artifact generation
+| Component | Purpose | New Location |
+|-----------|---------|--------------|
+| `Main.lean` | CLI executable | Dress |
+| `Cli` dependency | Command-line parsing | Dress |
+| Lake facets | `blueprint`, `blueprintJson` | Dress |
+| Rendering code | HTML/LaTeX generation | Dress (via SubVerso/Verso) |
 
 **Dependency comparison**:
 
 | Dependency | Upstream | This Fork |
 |------------|----------|-----------|
 | `batteries` | Yes | Yes |
-| `Cli` | Yes | **No** |
-| SubVerso/Verso | Transitive | **No** (moved to Dress) |
+| `Cli` | Yes | No |
+| SubVerso/Verso | Transitive | No (moved to Dress) |
 
-### 2. New Metadata Fields
+### 2. Dashboard Metadata Fields
 
-Eight metadata fields and three status flags added to support dashboard and project management features, as documented above.
+Eight metadata fields and three manual status flags added for dashboard and project management:
+- `keyDeclaration`, `message`, `priorityItem`, `blocked`, `potentialIssue`, `technicalDebt`, `misc`
+- `notReady`, `ready`, `mathlibReady` status flags
 
 ### 3. Manual ToExpr Instance
 
-The `Node` structure uses a manual `ToExpr` instance instead of deriving. Lean's derived `ToExpr` for structures with default field values does not correctly serialize all fields through the environment extension. The manual instance ensures status and all metadata fields persist correctly.
+The `Node` structure uses a manual `ToExpr` instance. Lean's derived `ToExpr` for structures with default field values does not correctly serialize all fields through environment extensions:
 
 ```lean
--- In Architect/Basic.lean
 instance : ToExpr Node where
   toTypeExpr := mkConst ``Node
-  toExpr n := mkApp14 (mkConst ``Node.mk) ...
+  toExpr n := Lean.mkAppN (mkConst ``Node.mk) #[
+    toExpr n.name,
+    toExpr n.latexLabel,
+    toExpr n.statement,
+    toExpr n.proof,
+    toExpr n.status,
+    -- ... all 14 fields explicitly serialized
+  ]
 ```
 
 ## Related Projects
 
-### Toolchain Build Order
-
-```
-SubVerso -> LeanArchitect -> Dress -> Runway
-```
-
-LeanArchitect only depends on `batteries`. SubVerso is built first because Dress requires both.
-
-**Downstream** (depend on LeanArchitect):
 | Project | Purpose |
 |---------|---------|
 | [Dress](https://github.com/e-vergo/Dress) | Artifact generator (highlighting, HTML, LaTeX, graph layout) |
 | [Runway](https://github.com/e-vergo/Runway) | Website/dashboard/PDF generator |
-| [SubVerso](https://github.com/e-vergo/subverso) | Syntax highlighting extraction (used by Dress) |
-
-### Other Projects
-
-| Project | Purpose |
-|---------|---------|
+| [SubVerso](https://github.com/e-vergo/subverso) | Syntax highlighting extraction |
 | [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project (16 nodes, all 6 status colors) |
 | [dress-blueprint-action](https://github.com/e-vergo/dress-blueprint-action) | GitHub Actions CI/CD |
 | [Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) | Upstream project |
 
 ## License
 
-Apache 2.0 - see [LICENSE](LICENSE) for details.
+Apache 2.0 - see [LICENSE](LICENSE).
