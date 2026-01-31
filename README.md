@@ -117,15 +117,16 @@ The dependency graph displays 6 possible statuses:
 | `fullyProven` | Forest Green | #228B22 | Auto-computed: proven and all ancestors proven/fullyProven |
 | `mathlibReady` | Light Blue | #87CEEB | Manual `(mathlibReady := true)` |
 
-**Status priority** (highest to lowest):
-1. `mathlibReady` - if manually set
-2. `fullyProven` - auto-computed if this node and all dependencies are proven
-3. `sorry` - if proof contains sorryAx
-4. `proven` - if formalized without sorry
-5. `ready` - if manually set
-6. `notReady` - default
+**Status determination** (evaluated in order):
+1. `mathlibReady` - if manually set, takes highest priority
+2. `ready` - if manually set
+3. If Lean code exists:
+   - `sorry` - if proof contains `sorryAx`
+   - `proven` - if proof is complete
+4. `notReady` - default (no Lean code or `notReady := true`)
+5. `fullyProven` - computed post-graph: upgrades `proven` nodes where all ancestors are also proven/fullyProven
 
-The `fullyProven` status is computed via graph traversal during artifact generation. It cannot be set manually.
+The `fullyProven` status is computed via O(V+E) graph traversal during artifact generation. It cannot be set manually.
 
 ### Dependency Options
 
@@ -444,7 +445,7 @@ JSON parsing handles legacy status values:
 | [Dress](https://github.com/e-vergo/Dress) | Artifact generator (highlighting, HTML, LaTeX, graph layout) |
 | [Runway](https://github.com/e-vergo/Runway) | Website/dashboard/PDF generator |
 | [SubVerso](https://github.com/e-vergo/subverso) | Syntax highlighting extraction |
-| [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project (25 nodes, all 6 status colors) |
+| [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project (~35 nodes, all 6 status colors) |
 | [dress-blueprint-action](https://github.com/e-vergo/dress-blueprint-action) | GitHub Actions CI/CD |
 | [Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) | Upstream project |
 
