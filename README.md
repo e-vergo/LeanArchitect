@@ -2,7 +2,7 @@
 
 The `@[blueprint]` attribute for Lean 4 formalization documentation.
 
-LeanArchitect marks declarations for inclusion in mathematical formalization blueprints. It stores metadata about theorems, definitions, and their dependencies without generating artifacts.
+LeanArchitect marks declarations for inclusion in mathematical formalization blueprints. It stores metadata about theorems, definitions, and their dependencies, and provides dependency inference by analyzing which constants a declaration uses.
 
 **Fork**: This is a fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) with architectural changes (metadata-only design, additional dashboard fields). See [Fork Changes](#fork-changes) for details.
 
@@ -39,7 +39,7 @@ theorem even_add_even (a b : Nat) (ha : Even a) (hb : Even b) : Even (a + b) := 
   exact ⟨k + l, by omega⟩
 ```
 
-The string argument (`"lem:even-sum"`) is the LaTeX label used in the blueprint document.
+The string argument (`"lem:even-sum"`) is the LaTeX label used in the blueprint document. If omitted, the Lean declaration name is used as the label.
 
 ## Attribute Options
 
@@ -132,9 +132,7 @@ The `fullyProven` status is computed via graph traversal during artifact generat
 ```lean
 @[blueprint "thm:main"
   (uses := [lem_helper, thm_base])           -- Statement dependencies
-  (excludes := [-lem_internal])              -- Exclude from inference
-  (proofUses := [lem_technical])             -- Proof-only dependencies
-  (proofExcludes := [-lem_auto])]            -- Exclude from proof inference
+  (proofUses := [lem_technical])]            -- Proof-only dependencies
 theorem mainTheorem : ... := ...
 ```
 
@@ -142,21 +140,25 @@ Dependencies can reference other nodes by LaTeX label:
 
 ```lean
 @[blueprint "thm:c"
-  (usesLabels := ["thm:a", "thm:b"])
-  (proofUsesLabels := ["lem:helper"])]
+  (uses := ["thm:a", "thm:b"])
+  (proofUses := ["lem:helper"])]
 theorem thmC : ... := ...
+```
+
+Exclude inferred dependencies with `-` prefix:
+
+```lean
+@[blueprint "thm:d"
+  (uses := [lemA, -lemB])]          -- Include lemA, exclude lemB
+theorem thmD : ... := ...
 ```
 
 | Field | Purpose |
 |-------|---------|
 | `uses` | Statement dependencies (dashed edges in graph) |
-| `excludes` | Exclude inferred statement dependencies |
 | `proofUses` | Proof-only dependencies (solid edges in graph) |
-| `proofExcludes` | Exclude inferred proof dependencies |
-| `usesLabels` | Same as `uses`, by LaTeX label |
-| `proofUsesLabels` | Same as `proofUses`, by LaTeX label |
-| `excludesLabels` | Same as `excludes`, by LaTeX label |
-| `proofExcludesLabels` | Same as `proofExcludes`, by LaTeX label |
+
+Both options accept Lean constants or LaTeX labels (strings). Prefix with `-` to exclude from inferred dependencies.
 
 ### Content Options
 
@@ -182,7 +184,7 @@ theorem debugExample : ... := ...
 
 ## Dependency Inference
 
-LeanArchitect automatically infers dependencies by analyzing which constants a declaration uses:
+LeanArchitect automatically infers dependencies by analyzing which constants a declaration uses. The `collectUsed` function traverses the expression tree of a declaration's type and value, collecting all referenced constants that have `@[blueprint]` attributes.
 
 ```lean
 @[blueprint "lem:a"]
@@ -196,16 +198,20 @@ theorem thmC : ... := by
   apply lemB              -- Proof depends on lem:b (solid edge)
 ```
 
-Use `excludes` to remove inferred dependencies, or `uses` to add explicit ones.
+Dependencies are split into two categories:
+- **Statement dependencies**: Constants used in the type signature (dashed edges)
+- **Proof dependencies**: Constants used in the proof value but not the type (solid edges)
+
+Use `uses` to add explicit dependencies or prefix with `-` to exclude inferred ones.
 
 ## Additional Features
 
 ### Blueprint Comments
 
-Add standalone comments that appear in the blueprint:
+Add standalone comments that appear in the blueprint module output:
 
 ```lean
-blueprint_comment "sec:intro" /--
+blueprint_comment /--
   This section introduces the main concepts...
 -/
 ```
@@ -224,6 +230,21 @@ theorem bar : P := by
   trivial
 ```
 
+### Proof Docstrings
+
+Docstrings within proofs are captured and included in the LaTeX output:
+
+```lean
+@[blueprint "thm:example"]
+theorem example_thm : P := by
+  /-- First we establish the base case. -/
+  apply base_case
+  /-- Then we proceed by induction. -/
+  induction n with
+  | zero => trivial
+  | succ => assumption
+```
+
 ### Multiple Declarations per Label
 
 Multiple Lean declarations can share a label:
@@ -237,6 +258,21 @@ Works with `to_additive`:
 
 ```lean
 @[to_additive (attr := blueprint "thm:b")] theorem b_mul : ...
+```
+
+### Commands
+
+```lean
+-- Show LaTeX output of current module
+#show_blueprint
+
+-- Show LaTeX output of a specific declaration
+#show_blueprint myTheorem
+#show_blueprint "thm:label"
+
+-- Show JSON output
+#show_blueprint_json
+#show_blueprint_json myTheorem
 ```
 
 ## Data Structures
@@ -269,7 +305,7 @@ structure NodePart where
   uses : Array Name             -- Declared dependencies
   excludes : Array Name         -- Excluded from inference
   usesLabels : Array String     -- Dependencies by LaTeX label
-  excludesLabels : Array String
+  excludesLabels : Array String -- Excluded labels
   latexEnv : String             -- LaTeX environment name
 ```
 
@@ -300,7 +336,8 @@ inductive NodeStatus where
 | `Architect.Command` | `blueprint_comment` command |
 | `Architect.Content` | `BlueprintContent` type for module contents |
 | `Architect.Load` | Loading nodes from environment |
-| `Architect.Tactic` | `sorry_using`, `blueprint_using` tactics |
+| `Architect.Output` | LaTeX and JSON generation |
+| `Architect.Tactic` | `sorry_using`, `blueprint_using` tactics, proof docstrings |
 
 ## Role in Toolchain
 
@@ -339,6 +376,14 @@ LeanArchitect is the metadata layer:
                            |  interactive website + dashboard + PDF      |
                            +---------------------------------------------+
 ```
+
+## Options
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `blueprint.ignoreUnknownConstants` | `false` | Whether to ignore unknown constants in `uses` and `proofUses` |
+
+Set via `set_option blueprint.ignoreUnknownConstants true` to suppress errors for unresolved constants.
 
 ## Fork Changes
 
@@ -386,6 +431,12 @@ instance : ToExpr Node where
   ]
 ```
 
+### 4. Backwards Compatibility
+
+JSON parsing handles legacy status values:
+- `"stated"` maps to `.notReady`
+- `"inMathlib"` maps to `.mathlibReady`
+
 ## Related Projects
 
 | Project | Purpose |
@@ -393,7 +444,7 @@ instance : ToExpr Node where
 | [Dress](https://github.com/e-vergo/Dress) | Artifact generator (highlighting, HTML, LaTeX, graph layout) |
 | [Runway](https://github.com/e-vergo/Runway) | Website/dashboard/PDF generator |
 | [SubVerso](https://github.com/e-vergo/subverso) | Syntax highlighting extraction |
-| [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project (16 nodes, all 6 status colors) |
+| [SBS-Test](https://github.com/e-vergo/SBS-Test) | Minimal test project (25 nodes, all 6 status colors) |
 | [dress-blueprint-action](https://github.com/e-vergo/dress-blueprint-action) | GitHub Actions CI/CD |
 | [Original LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) | Upstream project |
 
