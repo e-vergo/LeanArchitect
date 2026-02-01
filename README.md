@@ -4,6 +4,15 @@
 
 Extended `@[blueprint]` attribute for the [Side-by-Side Blueprint](https://github.com/e-vergo/Side-By-Side-Blueprint) toolchain. Adds metadata options, manual status flags, and dependency inference to support dashboard features and project management.
 
+## Upstream vs Fork
+
+| Upstream (hanwenzhu) | This Fork (SBS) |
+|---------------------|-----------------|
+| Basic `@[blueprint "label"]` syntax | Extended with 8 metadata + 3 status options |
+| Includes CLI executable and Lake facets | Metadata-only (CLI/facets moved to Dress) |
+| Depends on Cli, SubVerso | Depends only on batteries |
+| Self-contained tool | Component in toolchain: SubVerso -> LeanArchitect -> Dress -> Runway |
+
 ## Fork Extensions
 
 ### Extended `@[blueprint]` Attribute
@@ -29,7 +38,7 @@ Extended `@[blueprint]` attribute for the [Side-by-Side Blueprint](https://githu
 | `ready` | ready | Light Sea Green (#20B2AA) |
 | `mathlibReady` | mathlibReady | Light Blue (#87CEEB) |
 
-### Example
+### Usage Example
 
 ```lean
 @[blueprint "thm:main"
@@ -134,23 +143,9 @@ git = "https://github.com/e-vergo/LeanArchitect"
 rev = "main"
 ```
 
-## Architectural Changes from Upstream
+## Tooling
 
-This fork uses a **metadata-only architecture**. Artifact generation has been moved to [Dress](https://github.com/e-vergo/Dress):
-
-| Removed from LeanArchitect | Now in Dress |
-|---------------------------|--------------|
-| `Main.lean` CLI executable | `Main.lean` |
-| Lake facets (`blueprint`, `blueprintJson`) | Dress facets |
-| HTML/LaTeX rendering | SubVerso/Verso integration |
-| `Cli` dependency | Dress dependency |
-
-**Dependency chain:**
-```
-SubVerso -> LeanArchitect -> Dress -> Runway
-```
-
-LeanArchitect only depends on `batteries`. Fast compilation, no SubVerso/Verso overhead.
+For build commands, screenshot capture, compliance validation, archive management, and custom rubrics, see the [Archive & Tooling Hub](../archive/README.md).
 
 ## Upstream
 
