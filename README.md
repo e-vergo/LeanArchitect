@@ -1,12 +1,14 @@
 # LeanArchitect
 
-Fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect) extended into a general-purpose tagging system for the [Side-by-Side Blueprint](https://github.com/e-vergo/Side-By-Side-Blueprint) toolchain.
+> **SBS Fork** of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)
+
+Extended `@[blueprint]` attribute for the [Side-by-Side Blueprint](https://github.com/e-vergo/Side-By-Side-Blueprint) toolchain. Adds metadata options, manual status flags, and dependency inference to support dashboard features and project management.
 
 ## Fork Extensions
 
-This fork adds **8 metadata options** and **3 manual status flags** to the `@[blueprint]` attribute for dashboard and project management.
+### Extended `@[blueprint]` Attribute
 
-### Metadata Options (8)
+**8 Metadata Options:**
 
 | Option | Type | Purpose |
 |--------|------|---------|
@@ -19,7 +21,7 @@ This fork adds **8 metadata options** and **3 manual status flags** to the `@[bl
 | `technicalDebt` | `String` | Technical debt / cleanup notes |
 | `misc` | `String` | Catch-all miscellaneous notes |
 
-### Manual Status Flags (3)
+**3 Manual Status Flags:**
 
 | Option | Sets Status To | Color |
 |--------|----------------|-------|
@@ -64,8 +66,6 @@ theorem readyForMathlib : ... := ...
 6. `proven` (auto-detected)
 7. `notReady` (default)
 
-The `fullyProven` status is computed via O(V+E) graph traversal during artifact generation and cannot be set manually.
-
 ## Key Files
 
 | File | Purpose |
@@ -95,7 +95,8 @@ instance : ToExpr Node where
 
 ### Dependency Inference
 
-`CollectUsed.lean` provides `collectUsed` which traverses expression trees to infer dependencies:
+`CollectUsed.lean` provides `collectUsed` which traverses expression trees to extract dependencies. Downstream, Dress uses this via `Node.inferUses` to distinguish:
+
 - **Statement dependencies**: Constants used in type signature (dashed edges in graph)
 - **Proof dependencies**: Constants used in proof body (solid edges in graph)
 
