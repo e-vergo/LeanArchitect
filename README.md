@@ -1,23 +1,23 @@
 # LeanArchitect
 
-> **SBS Fork** of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)
+> **Fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)** for the Side-by-Side Blueprint toolchain.
 
-Extended `@[blueprint]` attribute for the [Side-by-Side Blueprint](https://github.com/e-vergo/Side-By-Side-Blueprint) toolchain. Adds metadata options, manual status flags, and dependency inference to support dashboard features and project management.
+This fork extends the `@[blueprint]` attribute with metadata options and manual status flags to support dashboard features and project management in the [Side-by-Side Blueprint](https://github.com/e-vergo/Side-By-Side-Blueprint) toolchain.
 
-## Upstream vs Fork
+**For full upstream documentation, see [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).**
 
-| Upstream (hanwenzhu) | This Fork (SBS) |
-|---------------------|-----------------|
+## What Changed
+
+| Upstream (hanwenzhu) | This Fork |
+|---------------------|-----------|
 | Basic `@[blueprint "label"]` syntax | Extended with 8 metadata + 3 status options |
 | Includes CLI executable and Lake facets | Metadata-only (CLI/facets moved to Dress) |
 | Depends on Cli, SubVerso | Depends only on batteries |
 | Self-contained tool | Component in toolchain: SubVerso -> LeanArchitect -> Dress -> Runway |
 
-## Fork Extensions
+## SBS Extensions
 
-### Extended `@[blueprint]` Attribute
-
-**8 Metadata Options:**
+### 8 Metadata Options
 
 | Option | Type | Purpose |
 |--------|------|---------|
@@ -30,7 +30,7 @@ Extended `@[blueprint]` attribute for the [Side-by-Side Blueprint](https://githu
 | `technicalDebt` | `String` | Technical debt / cleanup notes |
 | `misc` | `String` | Catch-all miscellaneous notes |
 
-**3 Manual Status Flags:**
+### 3 Manual Status Flags
 
 | Option | Sets Status To | Color |
 |--------|----------------|-------|
@@ -55,52 +55,19 @@ lemma helperLemma : ... := sorry
 theorem readyForMathlib : ... := ...
 ```
 
-## 6-Status Color Model
-
-| Status | Color | Hex | Source |
-|--------|-------|-----|--------|
-| `notReady` | Sandy Brown | #F4A460 | Default or manual `(notReady := true)` |
-| `ready` | Light Sea Green | #20B2AA | Manual `(ready := true)` |
-| `sorry` | Dark Red | #8B0000 | Auto-detected: proof contains `sorryAx` |
-| `proven` | Light Green | #90EE90 | Auto-detected: complete proof |
-| `fullyProven` | Forest Green | #228B22 | Auto-computed: proven + all ancestors proven |
-| `mathlibReady` | Light Blue | #87CEEB | Manual `(mathlibReady := true)` |
-
-**Priority order** (manual always wins):
-1. `mathlibReady` (manual) - highest
-2. `ready` (manual)
-3. `notReady` (manual, if explicitly set)
-4. `fullyProven` (auto-computed from graph)
-5. `sorry` (auto-detected via `sorryAx`)
-6. `proven` (auto-detected)
-7. `notReady` (default)
-
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `Architect/Basic.lean` | `Node`, `NodePart`, `NodeStatus` types with manual `ToExpr` instance |
-| `Architect/Attribute.lean` | `@[blueprint]` attribute syntax and elaboration |
+| `Architect/Attribute.lean` | `@[blueprint]` attribute syntax and elaboration with all options |
 | `Architect/CollectUsed.lean` | Dependency inference from expression trees |
 
 ## Technical Notes
 
 ### Manual `ToExpr` Instance
 
-The `Node` structure uses a manual `ToExpr` instance because Lean's derived instance for structures with default field values does not correctly serialize all fields through environment extensions:
-
-```lean
-instance : ToExpr Node where
-  toTypeExpr := mkConst ``Node
-  toExpr n := Lean.mkAppN (mkConst ``Node.mk) #[
-    toExpr n.name,
-    toExpr n.latexLabel,
-    toExpr n.statement,
-    toExpr n.proof,
-    toExpr n.status,
-    -- all 14 fields explicitly serialized
-  ]
-```
+The `Node` structure uses a manual `ToExpr` instance because Lean's derived instance for structures with default field values does not correctly serialize all fields through environment extensions.
 
 ### Dependency Inference
 
@@ -108,14 +75,6 @@ instance : ToExpr Node where
 
 - **Statement dependencies**: Constants used in type signature (dashed edges in graph)
 - **Proof dependencies**: Constants used in proof body (solid edges in graph)
-
-```lean
-@[blueprint "lem:a"]
-lemma lemA : ... := ...
-
-@[blueprint "lem:b"]
-lemma lemB : ... := lemA  -- Automatically depends on lem:a
-```
 
 ### Backwards Compatibility
 
@@ -125,7 +84,7 @@ JSON parsing handles legacy status values:
 
 ## Installation
 
-For full blueprint functionality, use [Dress](https://github.com/e-vergo/Dress) (which re-exports LeanArchitect):
+For full blueprint functionality, use [Dress](https://github.com/e-vergo/Dress) which re-exports LeanArchitect:
 
 ```toml
 [[require]]
@@ -142,14 +101,6 @@ name = "LeanArchitect"
 git = "https://github.com/e-vergo/LeanArchitect"
 rev = "main"
 ```
-
-## Tooling
-
-For build commands, screenshot capture, compliance validation, archive management, and custom rubrics, see the [Archive & Tooling Hub](../archive/README.md).
-
-## Upstream
-
-For original LeanArchitect functionality and documentation, see [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).
 
 ## License
 
