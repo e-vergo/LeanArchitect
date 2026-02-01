@@ -82,6 +82,16 @@ JSON parsing handles legacy status values:
 - `"stated"` maps to `.notReady`
 - `"inMathlib"` maps to `.mathlibReady`
 
+## Integration
+
+LeanArchitect is one component in the Side-by-Side Blueprint toolchain:
+
+```
+SubVerso -> LeanArchitect -> Dress -> Runway
+```
+
+For full documentation of the complete toolchain, see the [project README](https://github.com/e-vergo/Side-By-Side-Blueprint).
+
 ## Installation
 
 For full blueprint functionality, use [Dress](https://github.com/e-vergo/Dress) which re-exports LeanArchitect:
