@@ -1,6 +1,7 @@
 import Lean
 import Architect.Basic
 import Architect.Validation
+import Architect.CrossRef
 
 open Lean Meta Elab
 
@@ -56,6 +57,8 @@ structure Config where
   misc : Option String := none
   /-- Skip statement validation for this declaration. -/
   skipValidation : Bool := false
+  /-- Skip cross-reference checking between statement and Lean signature. -/
+  skipCrossRef : Bool := false
   /-- Enable debugging. -/
   trace : Bool := false
 deriving Repr
@@ -108,6 +111,7 @@ syntax blueprintPotentialIssueOption := &"potentialIssue" " := " str
 syntax blueprintTechnicalDebtOption := &"technicalDebt" " := " str
 syntax blueprintMiscOption := &"misc" " := " str
 syntax blueprintSkipValidationOption := &"skipValidation" " := " (&"true" <|> &"false")
+syntax blueprintSkipCrossRefOption := &"skipCrossRef" " := " (&"true" <|> &"false")
 
 syntax blueprintOption := "("
   blueprintStatementOption <|>
@@ -121,7 +125,8 @@ syntax blueprintOption := "("
   blueprintKeyDeclarationOption <|> blueprintMessageOption <|>
   blueprintPriorityItemOption <|> blueprintBlockedOption <|>
   blueprintPotentialIssueOption <|> blueprintTechnicalDebtOption <|>
-  blueprintMiscOption <|> blueprintSkipValidationOption ")"
+  blueprintMiscOption <|> blueprintSkipValidationOption <|>
+  blueprintSkipCrossRefOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
 
 /--
@@ -151,6 +156,7 @@ You may optionally add:
   - `technicalDebt := "description"`: Technical debt notes.
   - `misc := "notes"`: Miscellaneous notes.
   - `skipValidation := true`: Skip LaTeX statement validation for this declaration.
+  - `skipCrossRef := true`: Skip cross-reference checking between statement and Lean signature.
 
 For more information, see [LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).
 
@@ -232,6 +238,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with skipValidation := true }
       | `(blueprintOption| (skipValidation := false)) =>
         config := { config with skipValidation := false }
+      | `(blueprintOption| (skipCrossRef := true)) =>
+        config := { config with skipCrossRef := true }
+      | `(blueprintOption| (skipCrossRef := false)) =>
+        config := { config with skipCrossRef := false }
       | _ => throwUnsupportedSyntax
     return config
   | _ => throwUnsupportedSyntax
@@ -289,6 +299,17 @@ initialize registerBuiltinAttribute {
         if let some stmt := cfg.statement then
           for diag in validateStatement stmt do
             logWarning m!"{diag.message}"
+
+      -- Cross-reference check: compare statement text against Lean signature
+      if !cfg.skipCrossRef && !cfg.skipValidation then
+        if let some stmtText := cfg.statement then
+          if !stmtText.trimAscii.isEmpty then
+            let env ← getEnv
+            if let some constInfo := env.find? name then
+              let sigComponents := extractSignatureComponents constInfo.type
+              let stmtComponents := extractStatementComponents stmtText
+              for diag in crossReferenceCheck name sigComponents stmtComponents do
+                logWarning m!"{diag.message}"
 
       let node ← mkNode name cfg
       blueprintExt.add name node
