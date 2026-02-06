@@ -1,5 +1,6 @@
 import Architect.Attribute
 import Architect.Basic
+import Architect.RPC
 import Architect.CrossRef
 import Architect.Validation
 import Architect.CollectUsed
