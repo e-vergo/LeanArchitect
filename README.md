@@ -2,7 +2,7 @@
 
 > **Fork of [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect)** for the Side-by-Side Blueprint toolchain.
 
-This fork extends the `@[blueprint]` attribute with metadata options and manual status flags to support dashboard features and project management in the [Side-by-Side Blueprint](https://github.com/e-vergo/Side-By-Side-Blueprint) toolchain.
+This fork extends the `@[blueprint]` attribute with metadata options and manual status flags to support dashboard features and project management in the [Side-by-Side Blueprint](https://github.com/e-vergo/SLS-Strange-Loop-Station) toolchain.
 
 **For full upstream documentation, see [hanwenzhu/LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).**
 
@@ -90,7 +90,7 @@ LeanArchitect is one component in the Side-by-Side Blueprint toolchain:
 SubVerso -> LeanArchitect -> Dress -> Runway
 ```
 
-For full documentation of the complete toolchain, see the [project README](https://github.com/e-vergo/Side-By-Side-Blueprint).
+For full documentation of the complete toolchain, see the [project README](https://github.com/e-vergo/SLS-Strange-Loop-Station).
 
 ## Installation
 
