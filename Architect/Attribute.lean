@@ -1,5 +1,6 @@
 import Lean
 import Architect.Basic
+import Architect.Validation
 
 open Lean Meta Elab
 
@@ -53,6 +54,8 @@ structure Config where
   technicalDebt : Option String := none
   /-- Miscellaneous notes -/
   misc : Option String := none
+  /-- Skip statement validation for this declaration. -/
+  skipValidation : Bool := false
   /-- Enable debugging. -/
   trace : Bool := false
 deriving Repr
@@ -104,6 +107,7 @@ syntax blueprintBlockedOption := &"blocked" " := " str
 syntax blueprintPotentialIssueOption := &"potentialIssue" " := " str
 syntax blueprintTechnicalDebtOption := &"technicalDebt" " := " str
 syntax blueprintMiscOption := &"misc" " := " str
+syntax blueprintSkipValidationOption := &"skipValidation" " := " (&"true" <|> &"false")
 
 syntax blueprintOption := "("
   blueprintStatementOption <|>
@@ -117,7 +121,7 @@ syntax blueprintOption := "("
   blueprintKeyDeclarationOption <|> blueprintMessageOption <|>
   blueprintPriorityItemOption <|> blueprintBlockedOption <|>
   blueprintPotentialIssueOption <|> blueprintTechnicalDebtOption <|>
-  blueprintMiscOption ")"
+  blueprintMiscOption <|> blueprintSkipValidationOption ")"
 syntax blueprintOptions := (ppSpace str)? (ppSpace blueprintOption)*
 
 /--
@@ -146,6 +150,7 @@ You may optionally add:
   - `potentialIssue := "description"`: Known potential issues.
   - `technicalDebt := "description"`: Technical debt notes.
   - `misc := "notes"`: Miscellaneous notes.
+  - `skipValidation := true`: Skip LaTeX statement validation for this declaration.
 
 For more information, see [LeanArchitect](https://github.com/hanwenzhu/LeanArchitect).
 
@@ -223,6 +228,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
         config := { config with technicalDebt := some s.getString }
       | `(blueprintOption| (misc := $s:str)) =>
         config := { config with misc := some s.getString }
+      | `(blueprintOption| (skipValidation := true)) =>
+        config := { config with skipValidation := true }
+      | `(blueprintOption| (skipValidation := false)) =>
+        config := { config with skipValidation := false }
       | _ => throwUnsupportedSyntax
     return config
   | _ => throwUnsupportedSyntax
@@ -274,6 +283,12 @@ initialize registerBuiltinAttribute {
       unless kind == AttributeKind.global do throwError "invalid attribute 'blueprint', must be global"
       let cfg ← elabBlueprintConfig stx
       withOptions (·.updateBool `trace.blueprint (cfg.trace || ·)) do
+
+      -- Validate statement LaTeX if present and validation not skipped
+      if !cfg.skipValidation then
+        if let some stmt := cfg.statement then
+          for diag in validateStatement stmt do
+            logWarning m!"{diag.message}"
 
       let node ← mkNode name cfg
       blueprintExt.add name node
