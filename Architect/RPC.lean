@@ -94,7 +94,7 @@ private def findBlueprintAtPos (env : Environment) (pos : Lsp.Position)
 The infoview calls this method with the cursor position. If the cursor is on a
 `@[blueprint]` declaration, returns the blueprint metadata; otherwise returns `none`. -/
 @[server_rpc_method]
-def Architect.blueprintInfo (params : Lsp.TextDocumentPositionParams)
+def blueprintInfo (params : Lsp.TextDocumentPositionParams)
     : RequestM (RequestTask (Option BlueprintInfo)) := do
   let doc ← RequestM.readDoc
   let text := doc.meta.text
