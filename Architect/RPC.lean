@@ -32,6 +32,10 @@ structure BlueprintInfo where
   keyDeclaration : Bool := false
   /-- User message/notes. -/
   message : String := ""
+  /-- LaTeX content placed above this node. -/
+  above : String := ""
+  /-- LaTeX content placed below this node. -/
+  below : String := ""
   deriving FromJson, ToJson, Inhabited
 
 /-- Convert a `NodeStatus` to its string representation for the infoview. -/
@@ -58,6 +62,8 @@ private def nodeToInfo (node : Node) : BlueprintInfo where
     stmtUses ++ proofUses
   keyDeclaration := node.keyDeclaration
   message := node.message.getD ""
+  above := node.above.getD ""
+  below := node.below.getD ""
 
 /-- Find the blueprint node whose declaration range contains the given cursor position.
 

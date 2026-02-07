@@ -15,6 +15,10 @@ structure Config where
   hasProof : Option Bool := none
   /-- The proof of the node in text. Uses proof docstrings if not present. -/
   proof : Option String := none
+  /-- LaTeX content placed above this node in the blueprint/paper. Not part of the declaration or proof. -/
+  above : Option String := none
+  /-- LaTeX content placed below this node in the blueprint/paper. Not part of the declaration or proof. -/
+  below : Option String := none
   /-- The set of nodes that this node depends on. Infers from the constant if not present. -/
   uses : Array Name := #[]
   /-- The set of nodes to exclude from `uses`. -/
@@ -91,6 +95,8 @@ def elabBlueprintUses : TSyntax ``blueprintUses →
 syntax blueprintStatementOption := &"statement" " := " plainDocComment
 syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
 syntax blueprintProofOption := &"proof" " := " plainDocComment
+syntax blueprintAboveOption := &"above" " := " plainDocComment
+syntax blueprintBelowOption := &"below" " := " plainDocComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
@@ -116,6 +122,7 @@ syntax blueprintSkipCrossRefOption := &"skipCrossRef" " := " (&"true" <|> &"fals
 syntax blueprintOption := "("
   blueprintStatementOption <|>
   blueprintHasProofOption <|> blueprintProofOption <|>
+  blueprintAboveOption <|> blueprintBelowOption <|>
   blueprintUsesOption <|> blueprintProofUsesOption <|>
   blueprintTitleOption <|>
   blueprintNotReadyOption <|> blueprintReadyOption <|>
@@ -137,6 +144,8 @@ You may optionally add:
 - `statement := /-- ... -/`: The statement of the node in LaTeX.
 - `hasProof := true`: If the node has a proof part (default: true if the node is a theorem).
 - `proof := /-- ... -/`: The proof of the node in LaTeX (default: the docstrings in proof tactics).
+- `above := /-- ... -/`: LaTeX content placed above this node in the blueprint/paper.
+- `below := /-- ... -/`: LaTeX content placed below this node in the blueprint/paper.
 - `uses := [a, "b"]`: The dependencies of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `proofUses := [a, "b"]`: The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `title := /-- Title -/`: The title of the node in LaTeX.
@@ -184,6 +193,12 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (proof := $doc)) =>
         let proof := (← getDocStringText doc).trimAscii.copy
         config := { config with proof }
+      | `(blueprintOption| (above := $doc)) =>
+        let above := (← getDocStringText doc).trimAscii.copy
+        config := { config with above }
+      | `(blueprintOption| (below := $doc)) =>
+        let below := (← getDocStringText doc).trimAscii.copy
+        config := { config with below }
       | `(blueprintOption| (uses := $uses)) =>
         let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses
         config := { config with
@@ -273,14 +288,14 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
     let statement ← mkStatementPart name cfg true
     let proof ← mkProofPart name cfg
     return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion,
-             title := cfg.title,
+             title := cfg.title, above := cfg.above, below := cfg.below,
              keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
   else
     let statement ← mkStatementPart name cfg false
     return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion,
-             title := cfg.title,
+             title := cfg.title, above := cfg.above, below := cfg.below,
              keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }

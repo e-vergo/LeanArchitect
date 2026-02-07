@@ -99,6 +99,10 @@ structure Node where
   statement : NodePart
   /-- The proof of this node. -/
   proof : Option NodePart
+  /-- LaTeX content placed above this node in the blueprint/paper. -/
+  above : Option String := none
+  /-- LaTeX content placed below this node in the blueprint/paper. -/
+  below : Option String := none
   /-- The manually-set status of the node from the @[blueprint] attribute.
       This is the "input" status that may be overridden by derived statuses. -/
   status : NodeStatus := .notReady
@@ -131,6 +135,8 @@ instance : ToExpr Node where
     toExpr n.latexLabel,
     toExpr n.statement,
     toExpr n.proof,
+    toExpr n.above,
+    toExpr n.below,
     toExpr n.status,  -- Explicitly include status
     toExpr n.discussion,
     toExpr n.title,
