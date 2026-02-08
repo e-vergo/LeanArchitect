@@ -32,6 +32,8 @@ structure BlueprintInfo where
   keyDeclaration : Bool := false
   /-- User message/notes. -/
   message : String := ""
+  /-- The LaTeX proof text, if available. -/
+  proof : String := ""
   /-- LaTeX content placed above this node. -/
   above : String := ""
   /-- LaTeX content placed below this node. -/
@@ -47,11 +49,36 @@ private def nodeStatusToString : NodeStatus → String
   | .fullyProven => "fullyProven"
   | .mathlibReady => "mathlibReady"
 
+/-- Check whether a constant's value/proof expression references `sorryAx`. -/
+private def hasSorryAx (env : Environment) (constName : Name) : Bool :=
+  match env.find? constName with
+  | some (.thmInfo v)    => v.value.getUsedConstants.any (· == ``sorryAx)
+  | some (.defnInfo v)   => v.value.getUsedConstants.any (· == ``sorryAx)
+  | some (.opaqueInfo v) => v.value.getUsedConstants.any (· == ``sorryAx)
+  | _ => false
+
+/-- Derive the effective status for a node based on the environment.
+
+    Replicates the logic from `Dress.Graph.Builder.getStatus`:
+    - mathlibReady / ready: manual flags, highest priority
+    - proven: constant exists in env without sorryAx
+    - sorry: constant exists in env but uses sorryAx
+    - notReady: constant not in env (default) -/
+private def deriveStatus (env : Environment) (node : Node) : NodeStatus :=
+  match node.status with
+  | .mathlibReady => .mathlibReady
+  | .ready => .ready
+  | _ =>
+    if env.contains node.name then
+      if hasSorryAx env node.name then .sorry else .proven
+    else
+      .notReady
+
 /-- Convert a `Node` to `BlueprintInfo` for the infoview. -/
-private def nodeToInfo (node : Node) : BlueprintInfo where
+private def nodeToInfo (env : Environment) (node : Node) : BlueprintInfo where
   name := node.name.toString
   label := node.latexLabel
-  status := nodeStatusToString node.status
+  status := nodeStatusToString (deriveStatus env node)
   title := node.title.getD ""
   statement := node.statement.text
   dependencies :=
@@ -60,6 +87,7 @@ private def nodeToInfo (node : Node) : BlueprintInfo where
       | some p => p.uses.map Name.toString
       | none => #[]
     stmtUses ++ proofUses
+  proof := (node.proof.map (·.text)).getD ""
   keyDeclaration := node.keyDeclaration
   message := node.message.getD ""
   above := node.above.getD ""
@@ -104,7 +132,7 @@ def blueprintInfo (params : Lsp.TextDocumentPositionParams)
     fun snap => RequestM.pureTask do
       let env := snap.cmdState.env
       match findBlueprintAtPos env params.position with
-      | some node => return some (nodeToInfo node)
+      | some node => return some (nodeToInfo env node)
       | none => return none
 
 end Architect
