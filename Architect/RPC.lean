@@ -93,34 +93,36 @@ private def nodeToInfo (env : Environment) (node : Node) : BlueprintInfo where
   above := node.above.getD ""
   below := node.below.getD ""
 
-/-- Find the blueprint node whose declaration range contains the given cursor position.
+/-- Find the blueprint node whose declaration starts within the given snap's byte range.
 
-Iterates over all blueprint-annotated declarations in the environment and checks
-whether the cursor falls within their declaration range.
+Leverages the snap mechanism that `bindWaitFindSnap` already uses to identify which
+command the cursor is in. Each snap corresponds to a single top-level command and has
+a byte range (`stx.getPos?` .. `endPos`). We convert each blueprint declaration's
+start position to a byte offset via `FileMap.ofPosition` and check containment.
 
-Note: `Lsp.Position.line` is 0-indexed while `Lean.Position.line` is 1-indexed.
-We convert the LSP line to 1-indexed before comparison. -/
-private def findBlueprintAtPos (env : Environment) (pos : Lsp.Position)
+This avoids fragile line-based matching and correctly handles multi-line declarations,
+since the snap boundary is the authoritative source for "which command is the cursor in." -/
+private def findBlueprintInSnap (snap : Snapshots.Snapshot) (text : FileMap)
     : Option Node := Id.run do
+  let env := snap.cmdState.env
   let blueprintState := (blueprintExt : SimplePersistentEnvExtension (Name × Node) (NameMap Node)).getState env
-  -- Convert 0-indexed LSP line to 1-indexed Lean line
-  let cursorLine := pos.line + 1
+  let some snapBegin := snap.stx.getPos? | return none
+  let snapEnd := snap.endPos
   let mut result : Option Node := none
   for (declName, node) in blueprintState do
-    -- Use declRangeExt directly with the environment
-    if let some ranges := declRangeExt.find? (level := .exported) env declName <|>
-        declRangeExt.find? (level := .server) env declName then
-      let declRange := ranges.range
-      let startLine := declRange.pos.line
-      let endLine := declRange.endPos.line
-      if cursorLine >= startLine && cursorLine <= endLine then
+    if let some ranges := declRangeExt.find? env declName (level := .exported) <|>
+        declRangeExt.find? env declName (level := .server) then
+      let declBytePos := text.ofPosition ranges.range.pos
+      if declBytePos >= snapBegin && declBytePos <= snapEnd then
         result := some node
   return result
 
 /-- RPC method that returns blueprint metadata for the declaration at the cursor position.
 
-The infoview calls this method with the cursor position. If the cursor is on a
-`@[blueprint]` declaration, returns the blueprint metadata; otherwise returns `none`. -/
+The infoview calls this method with the cursor position. `bindWaitFindSnap` locates the
+snap (top-level command) containing the cursor. We then check whether any blueprint
+declaration starts within that snap's byte range, using `FileMap` for position conversion.
+This delegates cursor-to-command resolution entirely to the snap mechanism. -/
 @[server_rpc_method]
 def blueprintInfo (params : Lsp.TextDocumentPositionParams)
     : RequestM (RequestTask (Option BlueprintInfo)) := do
@@ -130,9 +132,8 @@ def blueprintInfo (params : Lsp.TextDocumentPositionParams)
   RequestM.bindWaitFindSnap doc (notFoundX := RequestM.pureTask (pure none))
     (fun s => s.endPos >= cursorPos)
     fun snap => RequestM.pureTask do
-      let env := snap.cmdState.env
-      match findBlueprintAtPos env params.position with
-      | some node => return some (nodeToInfo env node)
+      match findBlueprintInSnap snap text with
+      | some node => return some (nodeToInfo snap.cmdState.env node)
       | none => return none
 
 end Architect
