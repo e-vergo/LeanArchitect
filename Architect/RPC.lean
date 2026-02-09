@@ -108,14 +108,16 @@ private def findBlueprintInSnap (snap : Snapshots.Snapshot) (text : FileMap)
   let blueprintState := (blueprintExt : SimplePersistentEnvExtension (Name × Node) (NameMap Node)).getState env
   let some snapBegin := snap.stx.getPos? | return none
   let snapEnd := snap.endPos
-  let mut result : Option Node := none
   for (declName, node) in blueprintState do
+    -- Skip imported declarations: their declRangeExt positions are file-local
+    -- to their original source file, not the current file's byte space.
+    if env.getModuleIdxFor? declName |>.isSome then continue
     if let some ranges := declRangeExt.find? env declName (level := .exported) <|>
         declRangeExt.find? env declName (level := .server) then
       let declBytePos := text.ofPosition ranges.range.pos
       if declBytePos >= snapBegin && declBytePos <= snapEnd then
-        result := some node
-  return result
+        return some node
+  return none
 
 /-- RPC method that returns blueprint metadata for the declaration at the cursor position.
 
