@@ -307,7 +307,7 @@ initialize registerBuiltinAttribute {
     add := fun name stx kind => do
       unless kind == AttributeKind.global do throwError "invalid attribute 'blueprint', must be global"
       let cfg ← elabBlueprintConfig stx
-      withOptions (·.updateBool `trace.blueprint (cfg.trace || ·)) do
+      withOptions (fun opts => opts.setBool `trace.blueprint (cfg.trace || opts.getBool `trace.blueprint)) do
 
       -- Validate statement LaTeX if present and validation not skipped
       if !cfg.skipValidation then
