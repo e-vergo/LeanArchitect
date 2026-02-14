@@ -37,6 +37,8 @@ structure Config where
   proofExcludesLabels : Array String := #[]
   /-- The manually-set status of the node. Defaults to `.notReady`. -/
   status : NodeStatus := .notReady
+  /-- Whether the status was explicitly set by the user (vs. being the default). -/
+  statusExplicit : Bool := false
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat := none
   /-- The short title of the node in LaTeX. -/
@@ -214,15 +216,15 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (title := $doc:docComment)) =>
         config := { config with title := (← getDocStringText doc).trimAscii.copy }
       | `(blueprintOption| (notReady := true)) =>
-        config := { config with status := .notReady }
+        config := { config with status := .notReady, statusExplicit := true }
       | `(blueprintOption| (notReady := false)) =>
         pure () -- no-op, stays at default .stated
       | `(blueprintOption| (ready := true)) =>
-        config := { config with status := .ready }
+        config := { config with status := .ready, statusExplicit := true }
       | `(blueprintOption| (ready := false)) =>
         pure () -- no-op
       | `(blueprintOption| (mathlibReady := true)) =>
-        config := { config with status := .mathlibReady }
+        config := { config with status := .mathlibReady, statusExplicit := true }
       | `(blueprintOption| (mathlibReady := false)) =>
         pure () -- no-op
       | `(blueprintOption| (discussion := $n)) =>
@@ -287,14 +289,16 @@ def mkNode (name : Name) (cfg : Config) : CoreM Node := do
   if ← hasProof name cfg then
     let statement ← mkStatementPart name cfg true
     let proof ← mkProofPart name cfg
-    return { name, latexLabel, statement, proof, status := cfg.status, discussion := cfg.discussion,
+    return { name, latexLabel, statement, proof, status := cfg.status, statusExplicit := cfg.statusExplicit,
+             discussion := cfg.discussion,
              title := cfg.title, above := cfg.above, below := cfg.below,
              keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,
              technicalDebt := cfg.technicalDebt, misc := cfg.misc }
   else
     let statement ← mkStatementPart name cfg false
-    return { name, latexLabel, statement, proof := none, status := cfg.status, discussion := cfg.discussion,
+    return { name, latexLabel, statement, proof := none, status := cfg.status, statusExplicit := cfg.statusExplicit,
+             discussion := cfg.discussion,
              title := cfg.title, above := cfg.above, below := cfg.below,
              keyDeclaration := cfg.keyDeclaration, message := cfg.message, priorityItem := cfg.priorityItem,
              blocked := cfg.blocked, potentialIssue := cfg.potentialIssue,

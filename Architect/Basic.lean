@@ -106,6 +106,9 @@ structure Node where
   /-- The manually-set status of the node from the @[blueprint] attribute.
       This is the "input" status that may be overridden by derived statuses. -/
   status : NodeStatus := .notReady
+  /-- Whether the status was explicitly set by the user (vs. being the default).
+      When true, the status takes priority over auto-derived statuses. -/
+  statusExplicit : Bool := false
   /-- A GitHub issue number where the surrounding definition or statement is discussed. -/
   discussion : Option Nat
   /-- The short title of the node in LaTeX. Also used as custom display name for dependency graph if set. -/
@@ -138,6 +141,7 @@ instance : ToExpr Node where
     toExpr n.above,
     toExpr n.below,
     toExpr n.status,  -- Explicitly include status
+    toExpr n.statusExplicit,
     toExpr n.discussion,
     toExpr n.title,
     toExpr n.keyDeclaration,
