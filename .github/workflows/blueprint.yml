@@ -1,0 +1,195 @@
+# Build and deploy the LeanArchitect self-blueprint to GitHub Pages.
+#
+# PREREQUISITES: This workflow assumes blueprint files exist in the repo root:
+#   - LeanArchitectBlueprint.lean        (library root)
+#   - LeanArchitectBlueprint/             (annotation modules)
+#   - GenerateBlueprint.lean              (Verso document generator entry point)
+#   - runway.json                         (site configuration)
+#   - runway/src/blueprint.tex            (LaTeX source)
+#
+# These files need to be added to the LeanArchitect repo. Until then,
+# this workflow will fail at the "Build LeanArchitectBlueprint" step.
+#
+# LeanArchitect's lakefile.lean must also be updated to include:
+#   lean_lib LeanArchitectBlueprint
+#   lean_exe «generate-blueprint-verso» where root := `GenerateBlueprint
+#   require Dress from git "https://github.com/e-vergo/Dress.git" @ "main"
+#   require verso from git "https://github.com/e-vergo/verso.git" @ "main"
+#
+# Build order:
+#   1. lake build LeanArchitectBlueprint       (annotations + #dressNodes)
+#   2. lake build LeanArchitectBlueprint:blueprint  (Lake facets)
+#   3. lake build LeanArchitectBlueprint:depGraph   (dependency graph)
+#   4. lake build generate-blueprint-verso      (Verso executable)
+#   5. .lake/build/bin/generate-blueprint-verso (generate Verso HTML)
+#   6. lake exe runway                          (full site from LaTeX + artifacts)
+
+name: Blueprint
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # ========================================
+      # Setup
+      # ========================================
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.0
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - name: Checkout LeanArchitect
+        uses: actions/checkout@v4
+
+      - name: Checkout dress-blueprint-action (for CSS/JS assets)
+        uses: actions/checkout@v4
+        with:
+          repository: e-vergo/dress-blueprint-action
+          path: _assets/dress-blueprint-action
+
+      - name: Checkout Runway (for site generator)
+        uses: actions/checkout@v4
+        with:
+          repository: e-vergo/Runway
+          path: _tools/Runway
+
+      # ========================================
+      # Install toolchain
+      # ========================================
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Install Lean toolchain
+        run: |
+          source $HOME/.elan/env
+          lake --version
+
+      - name: Install LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-latex-base texlive-fonts-recommended texlive-latex-extra texlive-science
+
+      # ========================================
+      # Cache
+      # ========================================
+      - name: Cache Lake build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake
+            _tools/Runway/.lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}-${{ hashFiles('**/*.lean', '!.lake/**', '!_tools/**', '!_assets/**') }}
+          restore-keys: |
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lakefile.lean', 'lake-manifest.json') }}-
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-
+
+      # ========================================
+      # Step 1: Build LeanArchitectBlueprint library
+      # ========================================
+      - name: Build LeanArchitectBlueprint
+        run: lake build LeanArchitectBlueprint
+
+      # ========================================
+      # Step 2: Build blueprint facet (dressed artifacts + .tex)
+      # ========================================
+      - name: Build blueprint facet
+        run: lake build LeanArchitectBlueprint:blueprint
+
+      # ========================================
+      # Step 3: Build dependency graph
+      # extract_blueprint comes from Dress (fetched as git dependency).
+      # The depGraph facet in the lakefile finds it automatically.
+      # ========================================
+      - name: Build dependency graph
+        run: lake build LeanArchitectBlueprint:depGraph
+
+      # ========================================
+      # Step 4-5: Build and run Verso document generator
+      # ========================================
+      - name: Build Verso document generator
+        run: lake build generate-blueprint-verso
+
+      - name: Generate Verso HTML
+        run: lake env .lake/build/bin/generate-blueprint-verso
+
+      # ========================================
+      # Step 6: Build Runway site generator
+      # ========================================
+      - name: Build Runway
+        working-directory: _tools/Runway
+        run: lake build runway
+
+      # ========================================
+      # Step 7: Generate site with Runway
+      # ========================================
+      - name: Create CI runway config
+        run: |
+          # Create runway-ci.json with absolute paths for CI
+          cp runway.json runway-ci.json
+          sed -i 's|"assetsDir"[[:space:]]*:[[:space:]]*"[^"]*"|"assetsDir": "'$GITHUB_WORKSPACE'/_assets/dress-blueprint-action/assets"|g' runway-ci.json
+          echo "Runway CI config:"
+          cat runway-ci.json
+
+      - name: Generate site
+        run: |
+          mkdir -p .lake/build/runway
+          cd _tools/Runway && lake exe runway \
+            --build-dir "$GITHUB_WORKSPACE/.lake/build" \
+            --output "$GITHUB_WORKSPACE/.lake/build/runway" \
+            build \
+            "$GITHUB_WORKSPACE/runway-ci.json"
+
+      # ========================================
+      # Verify and deploy
+      # ========================================
+      - name: Verify site structure
+        run: |
+          echo "Site structure:"
+          ls -la .lake/build/runway/
+          echo ""
+          echo "Key files:"
+          for f in index.html dep_graph.html; do
+            if [ -f ".lake/build/runway/$f" ]; then
+              echo "  [OK] $f"
+            else
+              echo "  [MISSING] $f"
+            fi
+          done
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .lake/build/runway
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
