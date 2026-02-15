@@ -4,6 +4,10 @@ import Batteries.Lean.NameMapAttribute
 
 open Lean Elab
 
+/-- Forward-port of lean4#12469: `Thunk α` is `Inhabited` when `α` is.
+    Required by newer batteries (≥ v4.28.0) which wraps `NameMapExtension` state in a `Thunk`. -/
+instance [Inhabited α] : Inhabited (Thunk α) := ⟨.pure default⟩
+
 namespace Architect
 
 initialize registerTraceClass `blueprint
