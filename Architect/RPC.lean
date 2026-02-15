@@ -105,10 +105,10 @@ since the snap boundary is the authoritative source for "which command is the cu
 private def findBlueprintInSnap (snap : Snapshots.Snapshot) (text : FileMap)
     : Option Node := Id.run do
   let env := snap.cmdState.env
-  let blueprintState := (blueprintExt : SimplePersistentEnvExtension (Name × Node) (NameMap Node)).getState env
+  let entries := blueprintExt.getEntries env
   let some snapBegin := snap.stx.getPos? | return none
   let snapEnd := snap.endPos
-  for (declName, node) in blueprintState do
+  for (declName, node) in entries do
     -- Skip imported declarations: their declRangeExt positions are file-local
     -- to their original source file, not the current file's byte space.
     if env.getModuleIdxFor? declName |>.isSome then continue
