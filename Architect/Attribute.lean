@@ -267,12 +267,24 @@ def elabBlueprintConfig : Syntax → CoreM Config
 def hasProof (name : Name) (cfg : Config) : CoreM Bool := do
   return cfg.hasProof.getD (cfg.proof.isSome || wasOriginallyTheorem (← getEnv) name)
 
-def mkStatementPart (_name : Name) (cfg : Config) (hasProof : Bool) : CoreM NodePart := do
+def mkStatementPart (name : Name) (cfg : Config) (hasProof : Bool) : CoreM NodePart := do
+  let latexEnv : String ← match cfg.latexEnv with
+    | some e => pure e
+    | none => do
+      if hasProof then pure "theorem"
+      else
+        let env ← getEnv
+        if isClass env name then pure "class"
+        else if isStructure env name then pure "structure"
+        else if Meta.isInstanceCore env name then pure "instance"
+        else match env.find? name with
+          | some (.defnInfo dv) => pure (if dv.hints.isAbbrev then "abbrev" else "definition")
+          | _ => pure "definition"
   return {
     text := cfg.statement.getD "",
     uses := cfg.uses, excludes := cfg.excludes,
     usesLabels := cfg.usesLabels, excludesLabels := cfg.excludesLabels,
-    latexEnv := cfg.latexEnv.getD (if hasProof then "theorem" else "definition")
+    latexEnv := latexEnv
   }
 
 def mkProofPart (_name : Name) (cfg : Config) : CoreM NodePart := do
