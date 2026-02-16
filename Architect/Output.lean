@@ -279,7 +279,7 @@ def NodeWithPos.toJson (node : NodeWithPos) : Json :=
     "statement": $(node.statement),
     "proof": $(node.proof),
     "status": $(node.status),
-    "notReady": $(node.notReady),
+    "notReady": $(node.status == .notReady),
     "discussion": $(node.discussion),
     "title": $(node.title),
     "hasLean": $(node.hasLean),
