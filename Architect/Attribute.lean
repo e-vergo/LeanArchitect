@@ -271,15 +271,15 @@ def mkStatementPart (name : Name) (cfg : Config) (hasProof : Bool) : CoreM NodeP
   let latexEnv : String ← match cfg.latexEnv with
     | some e => pure e
     | none => do
-      if hasProof then pure "theorem"
-      else
-        let env ← getEnv
-        if isClass env name then pure "class"
-        else if isStructure env name then pure "structure"
-        else if Meta.isInstanceCore env name then pure "instance"
-        else match env.find? name with
-          | some (.defnInfo dv) => pure (if dv.hints.isAbbrev then "abbrev" else "definition")
-          | _ => pure "definition"
+      let env ← getEnv
+      -- Check declaration type first (structure/class/instance/abbrev are never theorems,
+      -- even when they have a proof/description block)
+      if isClass env name then pure "class"
+      else if isStructure env name then pure "structure"
+      else if Meta.isInstanceCore env name then pure "instance"
+      else match env.find? name with
+        | some (.defnInfo dv) => pure (if dv.hints.isAbbrev then "abbrev" else "definition")
+        | _ => if hasProof then pure "theorem" else pure "definition"
   return {
     text := cfg.statement.getD "",
     uses := cfg.uses, excludes := cfg.excludes,
