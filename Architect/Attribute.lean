@@ -69,8 +69,6 @@ structure Config where
   trace : Bool := false
 deriving Repr
 
-/-- Backwards compatibility accessor. -/
-def Config.notReady (c : Config) : Bool := c.status == .notReady
 
 syntax blueprintSingleUses := "-"? (ident <|> str)
 syntax blueprintUses := "[" blueprintSingleUses,* "]"
@@ -102,10 +100,10 @@ syntax blueprintBelowOption := &"below" " := " plainDocComment
 syntax blueprintUsesOption := &"uses" " := " blueprintUses
 syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
--- Status options (only 3 manual flags: notReady, ready, mathlibReady)
--- fullyProven is auto-computed via graph traversal, inMathlib was removed
+-- Status options (only 3 manual flags: notReady, wip, mathlibReady)
+-- fullyProven is auto-computed via graph traversal, axiom is auto-detected by Dress
 syntax blueprintNotReadyOption := &"notReady" " := " (&"true" <|> &"false")
-syntax blueprintReadyOption := &"ready" " := " (&"true" <|> &"false")
+syntax blueprintWipOption := &"wip" " := " (&"true" <|> &"false")
 syntax blueprintMathlibReadyOption := &"mathlibReady" " := " (&"true" <|> &"false")
 syntax blueprintDiscussionOption := &"discussion" " := " num
 syntax blueprintLatexEnvOption := &"latexEnv" " := " str
@@ -127,7 +125,7 @@ syntax blueprintOption := "("
   blueprintAboveOption <|> blueprintBelowOption <|>
   blueprintUsesOption <|> blueprintProofUsesOption <|>
   blueprintTitleOption <|>
-  blueprintNotReadyOption <|> blueprintReadyOption <|>
+  blueprintNotReadyOption <|> blueprintWipOption <|>
   blueprintMathlibReadyOption <|>
   blueprintDiscussionOption <|>
   blueprintLatexEnvOption <|> blueprintLatexLabelOption <|>
@@ -153,9 +151,9 @@ You may optionally add:
 - `title := /-- Title -/`: The title of the node in LaTeX.
 - Status options (3 manual flags):
   - `notReady := true`: The node is not ready to formalize (needs more blueprint work).
-  - `ready := true`: The node is ready to formalize.
+  - `wip := true`: The node is work in progress, actively being formalized.
   - `mathlibReady := true`: The node is ready to upstream to Mathlib.
-  Note: `fullyProven` status is auto-computed via graph traversal (not a manual flag).
+  Note: `fullyProven` is auto-computed via graph traversal, `axiom` is auto-detected by Dress.
 - `discussion := 123`: The discussion issue number of the node.
 - `latexEnv := "lemma"`: The LaTeX environment to use for the node (default: "theorem" or "definition").
 - Dashboard/metadata options:
@@ -218,10 +216,10 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (notReady := true)) =>
         config := { config with status := .notReady, statusExplicit := true }
       | `(blueprintOption| (notReady := false)) =>
-        pure () -- no-op, stays at default .stated
-      | `(blueprintOption| (ready := true)) =>
-        config := { config with status := .ready, statusExplicit := true }
-      | `(blueprintOption| (ready := false)) =>
+        pure () -- no-op, stays at default .notReady
+      | `(blueprintOption| (wip := true)) =>
+        config := { config with status := .wip, statusExplicit := true }
+      | `(blueprintOption| (wip := false)) =>
         pure () -- no-op
       | `(blueprintOption| (mathlibReady := true)) =>
         config := { config with status := .mathlibReady, statusExplicit := true }

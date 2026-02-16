@@ -20,7 +20,7 @@ structure BlueprintInfo where
   name : String
   /-- The LaTeX label for the node. -/
   label : String
-  /-- The 6-status model value: notReady/ready/sorry/proven/fullyProven/mathlibReady. -/
+  /-- The 7-status model value: notReady/wip/sorry/proven/fullyProven/axiom/mathlibReady. -/
   status : String
   /-- The custom display title, if set. -/
   title : String := ""
@@ -43,10 +43,11 @@ structure BlueprintInfo where
 /-- Convert a `NodeStatus` to its string representation for the infoview. -/
 private def nodeStatusToString : NodeStatus → String
   | .notReady => "notReady"
-  | .ready => "ready"
+  | .wip => "wip"
   | .sorry => "sorry"
   | .proven => "proven"
   | .fullyProven => "fullyProven"
+  | .axiom => "axiom"
   | .mathlibReady => "mathlibReady"
 
 /-- Check whether a constant's value/proof expression references `sorryAx`. -/
@@ -60,14 +61,15 @@ private def hasSorryAx (env : Environment) (constName : Name) : Bool :=
 /-- Derive the effective status for a node based on the environment.
 
     Replicates the logic from `Dress.Graph.Builder.getStatus`:
-    - mathlibReady / ready: manual flags, highest priority
+    - mathlibReady / wip: manual flags, highest priority
     - proven: constant exists in env without sorryAx
     - sorry: constant exists in env but uses sorryAx
-    - notReady: constant not in env (default) -/
+    - notReady: constant not in env (default)
+    Note: `axiom` and `fullyProven` are computed downstream by Dress, not here. -/
 private def deriveStatus (env : Environment) (node : Node) : NodeStatus :=
   match node.status with
   | .mathlibReady => .mathlibReady
-  | .ready => .ready
+  | .wip => .wip
   | _ =>
     if env.contains node.name then
       if hasSorryAx env node.name then .sorry else .proven

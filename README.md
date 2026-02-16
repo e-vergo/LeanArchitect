@@ -10,7 +10,7 @@ This fork extends the `@[blueprint]` attribute with metadata options and manual 
 
 | Upstream (hanwenzhu) | This Fork |
 |---------------------|-----------|
-| Basic `@[blueprint "label"]` syntax | Extended with 8 metadata + 3 status options |
+| Basic `@[blueprint "label"]` syntax | Extended with 8 metadata + 2 manual status flags |
 | Includes CLI executable and Lake facets | Metadata-only (CLI/facets moved to Dress) |
 | Depends on Cli, SubVerso | Depends only on batteries |
 | Self-contained tool | Component in toolchain: SubVerso -> LeanArchitect -> Dress -> Runway |
@@ -30,13 +30,14 @@ This fork extends the `@[blueprint]` attribute with metadata options and manual 
 | `technicalDebt` | `String` | Technical debt / cleanup notes |
 | `misc` | `String` | Catch-all miscellaneous notes |
 
-### 3 Manual Status Flags
+### 2 Manual Status Flags
 
 | Option | Sets Status To | Color |
 |--------|----------------|-------|
-| `notReady` | notReady | Sandy Brown (#F4A460) |
-| `ready` | ready | Light Sea Green (#20B2AA) |
-| `mathlibReady` | mathlibReady | Light Blue (#87CEEB) |
+| `wip` | wip | Deep Teal (#0097A7) |
+| `mathlibReady` | mathlibReady | Vivid Blue (#42A5F5) |
+
+**Note:** `notReady` is the default status (no flag needed). `axiom` status is auto-detected for Lean `axiom` declarations and cannot be set manually.
 
 ### Usage Example
 
@@ -53,6 +54,9 @@ lemma helperLemma : ... := sorry
 
 @[blueprint "thm:upstream" (mathlibReady := true)]
 theorem readyForMathlib : ... := ...
+
+@[blueprint "lem:active" (wip := true)]
+lemma activelyWorking : ... := sorry
 ```
 
 ## Key Files

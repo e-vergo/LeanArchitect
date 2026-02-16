@@ -68,15 +68,14 @@ These fields appear in the Runway-generated dashboard and project management vie
 | `misc` | `String` | `none` | Catch-all miscellaneous notes. |
 | `title` | `String` | `none` | Custom display name in the dependency graph (also listed under Content). |
 
-#### Manual Status Flags (3 options)
+#### Manual Status Flags (2 options)
 
 | Option | Sets Status To | Graph Color |
 |--------|----------------|-------------|
-| `notReady := true` | notReady | Sandy Brown (#F4A460) |
-| `ready := true` | ready | Light Sea Green (#20B2AA) |
-| `mathlibReady := true` | mathlibReady | Light Blue (#87CEEB) |
+| `wip := true` | wip | Deep Teal (#0097A7) |
+| `mathlibReady := true` | mathlibReady | Vivid Blue (#42A5F5) |
 
-Setting `false` is a no-op (the status stays at default).
+Setting `false` is a no-op (the status stays at default). `notReady` is the default status and does not need a flag. `axiom` status is auto-detected for Lean `axiom` declarations.
 
 #### Validation Options
 
@@ -87,20 +86,21 @@ Setting `false` is a no-op (the status stays at default).
 
 ## Node Status Model
 
-Every node has one of 6 statuses, determined by a priority system that combines manual flags with automatic derivation.
+Every node has one of 7 statuses, determined by a priority system that combines manual flags with automatic derivation.
 
 | Status | How Determined | Color |
 |--------|---------------|-------|
-| `notReady` | Default, or set manually | Sandy Brown (#F4A460) |
-| `ready` | Manual flag | Light Sea Green (#20B2AA) |
-| `sorry` | Auto: proof contains `sorryAx` | Dark Red (#8B0000) |
-| `proven` | Auto: formalized without sorry | Light Green (#90EE90) |
-| `fullyProven` | Auto-computed: node AND all ancestors proven | Forest Green (#228B22) |
-| `mathlibReady` | Manual flag (highest priority) | Light Blue (#87CEEB) |
+| `notReady` | Default -- no Lean proof exists | Vivid Orange (#E8820C) |
+| `wip` | Manual flag: actively being worked on | Deep Teal (#0097A7) |
+| `sorry` | Auto: proof contains `sorryAx` | Vivid Red (#C62828) |
+| `proven` | Auto: formalized without sorry | Medium Green (#66BB6A) |
+| `fullyProven` | Auto-computed: node AND all ancestors proven | Deep Forest Green (#1B5E20) |
+| `axiom` | Structural: Lean `axiom` declaration (intentionally unproven) | Vivid Purple (#7E57C2) |
+| `mathlibReady` | Manual flag (highest priority) | Vivid Blue (#42A5F5) |
 
-**Priority order** (highest to lowest): mathlibReady > ready > notReady (explicit) > fullyProven > sorry > proven > notReady (default).
+**Priority order** (highest to lowest): mathlibReady > wip > notReady (explicit) > fullyProven > axiom > sorry > proven > notReady (default).
 
-The `sorry` and `proven` statuses are derived by checking whether the constant's value references `sorryAx`. The `fullyProven` status is computed downstream by Dress via graph traversal -- it is not a manual flag.
+The `sorry` and `proven` statuses are derived by checking whether the constant's value references `sorryAx`. The `axiom` status is auto-detected for Lean `axiom` declarations. The `fullyProven` status is computed downstream by Dress via graph traversal -- it is not a manual flag.
 
 ## Dependency Inference
 
@@ -152,7 +152,7 @@ Runway site generator: dashboard, chapters, dependency graph, paper
 |------|------|-------------|
 | `Node` | `Basic.lean` | Core node data: name, label, statement, proof, status, all metadata fields |
 | `NodePart` | `Basic.lean` | A statement or proof part with LaTeX text, uses, excludes, and environment |
-| `NodeStatus` | `Basic.lean` | The 6-status enum: notReady, ready, sorry, proven, fullyProven, mathlibReady |
+| `NodeStatus` | `Basic.lean` | The 7-status enum: notReady, wip, sorry, proven, fullyProven, axiom, mathlibReady |
 | `Config` | `Attribute.lean` | Parsed configuration from `@[blueprint]` syntax (all options) |
 | `BlueprintContent` | `Content.lean` | Union type: either a node or a module docstring, ordered by source position |
 | `BlueprintInfo` | `RPC.lean` | Subset of node data returned to the VS Code infoview via RPC |

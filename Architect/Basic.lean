@@ -16,27 +16,30 @@ initialize registerTraceClass `blueprint.timing
 
 /-- Status of a blueprint node for visualization.
 
-    There are 6 possible statuses:
+    There are 7 possible statuses:
     - `notReady`: Default + Manual - not ready/not formalized (blueprint only, no Lean decl)
-    - `ready`: Manual flag via `@[blueprint (ready)]` - ready to formalize
+    - `wip`: Manual flag via `@[blueprint (wip)]` - work in progress, actively being formalized
     - `sorry`: Derived - has `sorryAx` in proof
     - `proven`: Derived - formalized without sorry
     - `fullyProven`: Auto-computed - this node AND all ancestors are proven/fullyProven
+    - `axiom`: Auto-detected - declaration is a Lean `axiom` (no proof expected)
     - `mathlibReady`: Manual flag via `@[blueprint (mathlibReady)]` - highest priority, ready for/in mathlib
 
     Status determination order (highest to lowest priority):
     1. `mathlibReady` - if manually set
-    2. `fullyProven` - auto-computed if this + all deps proven
-    3. `sorry` - if proof contains sorryAx
+    2. `axiom` - auto-detected from Lean `axiom` keyword
+    3. `fullyProven` - auto-computed if this + all deps proven
     4. `proven` - if formalized without sorry
-    5. `ready` - if manually set
-    6. `notReady` - default -/
+    5. `sorry` - if proof contains sorryAx
+    6. `wip` - if manually set
+    7. `notReady` - default -/
 inductive NodeStatus where
   | notReady     -- Default + Manual: not ready/not formalized
-  | ready        -- Manual: ready to formalize
+  | wip          -- Manual: work in progress, actively being formalized
   | sorry        -- Derived: has sorryAx in proof
   | proven       -- Derived: formalized without sorry
   | fullyProven  -- Auto-computed: this + all ancestors proven/fullyProven
+  | axiom        -- Auto-detected: Lean `axiom` declaration (no proof expected)
   | mathlibReady -- Manual: highest priority, ready for/in mathlib
   deriving Repr, Inhabited, BEq, DecidableEq
 
@@ -46,10 +49,11 @@ instance : Inhabited NodeStatus where
 instance : ToJson NodeStatus where
   toJson
     | .notReady => "notReady"
-    | .ready => "ready"
+    | .wip => "wip"
     | .sorry => "sorry"
     | .proven => "proven"
     | .fullyProven => "fullyProven"
+    | .axiom => "axiom"
     | .mathlibReady => "mathlibReady"
 
 instance : FromJson NodeStatus where
@@ -57,13 +61,15 @@ instance : FromJson NodeStatus where
     let s ← json.getStr?
     match s with
     | "notReady" => pure .notReady
-    | "ready" => pure .ready
+    | "wip" => pure .wip
     | "sorry" => pure .sorry
     | "proven" => pure .proven
     | "fullyProven" => pure .fullyProven
+    | "axiom" => pure .axiom
     | "mathlibReady" => pure .mathlibReady
     -- Backwards compatibility: map old statuses to new ones
     | "stated" => pure .notReady
+    | "ready" => pure .wip
     | "inMathlib" => pure .mathlibReady
     | _ => throw s!"unknown NodeStatus: {s}"
 
@@ -71,10 +77,11 @@ instance : ToExpr NodeStatus where
   toTypeExpr := mkConst ``NodeStatus
   toExpr
     | .notReady => mkConst ``NodeStatus.notReady
-    | .ready => mkConst ``NodeStatus.ready
+    | .wip => mkConst ``NodeStatus.wip
     | .sorry => mkConst ``NodeStatus.sorry
     | .proven => mkConst ``NodeStatus.proven
     | .fullyProven => mkConst ``NodeStatus.fullyProven
+    | .axiom => mkConst ``NodeStatus.axiom
     | .mathlibReady => mkConst ``NodeStatus.mathlibReady
 
 /-- The statement or proof of a node. -/
@@ -157,8 +164,6 @@ instance : ToExpr Node where
     toExpr n.misc
   ]
 
-/-- Backwards compatibility: check if a node is marked as not ready. -/
-def Node.notReady (n : Node) : Bool := n.status == .notReady
 
 structure NodeWithPos extends Node where
   /--
