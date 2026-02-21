@@ -46,7 +46,6 @@ theorem add_comm (a b : MyNat) : add a b = add b a := by
 /-! ## Multiplication -/
 
 @[blueprint
-  (uses := [add]) -- Manually added dependency
   (statement := /-- Natural number multiplication. -/)]
 def mul (a b : MyNat) : MyNat := sorry
 
@@ -59,11 +58,7 @@ theorem mul_comm (a b : MyNat) : mul a b = mul b a := by sorry
 @[blueprint "thm:flt"
   (statement := /-- Fermat's last theorem. -/)
   (title := "Taylor-Wiles")
-  -- You may override the inferred statement dependencies by `uses`.
-  (uses := [mul])
-  -- Alternatively to docstring tactics and `using` tactics, proof metadata can be specified
-  -- by `proof` and `proofUses`.
-  (proof := /-- See \cite{Wiles1995, Taylor-Wiles1995}. -/) (proofUses := [mul_comm])
+  (proof := /-- See \cite{Wiles1995, Taylor-Wiles1995}. -/)
   (notReady := true) (discussion := 1)]
 theorem flt : (sorry : Prop) := sorry
 
@@ -86,8 +81,7 @@ run_meta do
   let flt := (blueprintExt.find? env ``MyNat.flt).get!
   assert! flt.latexLabel == "thm:flt"
   assert! flt.title == some "Taylor-Wiles"
-  assert! flt.notReady == true
+  assert! flt.status == .notReady
+  assert! flt.statusExplicit == true
   assert! flt.discussion == some 1
-  assert! flt.statement.uses == #[``MyNat.mul]
   assert! flt.proof.isSome
-  assert! flt.proof.get!.uses == #[``MyNat.mul_comm]

@@ -19,22 +19,6 @@ structure Config where
   above : Option String := none
   /-- LaTeX content placed below this node in the blueprint/paper. Not part of the declaration or proof. -/
   below : Option String := none
-  /-- The set of nodes that this node depends on. Infers from the constant if not present. -/
-  uses : Array Name := #[]
-  /-- The set of nodes to exclude from `uses`. -/
-  excludes : Array Name := #[]
-  /-- Additional LaTeX labels of nodes that this node depends on. -/
-  usesLabels : Array String := #[]
-  /-- The set of labels to exclude from `usesLabels`. -/
-  excludesLabels : Array String := #[]
-  /-- The set of nodes that the proof of this node depends on. Infers from the constant's value if not present. -/
-  proofUses : Array Name := #[]
-  /-- The set of nodes to exclude from `proofUses`. -/
-  proofExcludes : Array Name := #[]
-  /-- Additional LaTeX labels of nodes that the proof of this node depends on. -/
-  proofUsesLabels : Array String := #[]
-  /-- The set of labels to exclude from `proofUsesLabels`. -/
-  proofExcludesLabels : Array String := #[]
   /-- The manually-set status of the node. Defaults to `.notReady`. -/
   status : NodeStatus := .notReady
   /-- Whether the status was explicitly set by the user (vs. being the default). -/
@@ -70,35 +54,11 @@ structure Config where
 deriving Repr
 
 
-syntax blueprintSingleUses := "-"? (ident <|> str)
-syntax blueprintUses := "[" blueprintSingleUses,* "]"
-
-/-- Returns array of (used names, excluded names, used labels, excluded labels). -/
-def elabBlueprintUses : TSyntax ``blueprintUses →
-    CoreM (Array Name × Array Name × Array String × Array String)
-  | `(blueprintUses| [$[$usesStx:blueprintSingleUses],*]) => do
-    let uses ← usesStx.filterMapM fun
-      | `(blueprintSingleUses| $id:ident) => some <$> tryResolveConst id
-      | _ => pure none
-    let excludes ← usesStx.filterMapM fun
-      | `(blueprintSingleUses| -$id:ident) => some <$> tryResolveConst id
-      | _ => pure none
-    let usesLabels := usesStx.filterMap fun
-      | `(blueprintSingleUses| $str:str) => some str.getString
-      | _ => none
-    let excludesLabels := usesStx.filterMap fun
-      | `(blueprintSingleUses| -$str:str) => some str.getString
-      | _ => none
-    return (uses, excludes, usesLabels, excludesLabels)
-  | _ => throwUnsupportedSyntax
-
 syntax blueprintStatementOption := &"statement" " := " plainDocComment
 syntax blueprintHasProofOption := &"hasProof" " := " (&"true" <|> &"false")
 syntax blueprintProofOption := &"proof" " := " plainDocComment
 syntax blueprintAboveOption := &"above" " := " plainDocComment
 syntax blueprintBelowOption := &"below" " := " plainDocComment
-syntax blueprintUsesOption := &"uses" " := " blueprintUses
-syntax blueprintProofUsesOption := &"proofUses" " := " blueprintUses
 syntax blueprintTitleOption := &"title" " := " (plainDocComment <|> str)
 -- Status options (only 3 manual flags: notReady, wip, mathlibReady)
 -- fullyProven is auto-computed via graph traversal, axiom is auto-detected by Dress
@@ -123,7 +83,6 @@ syntax blueprintOption := "("
   blueprintStatementOption <|>
   blueprintHasProofOption <|> blueprintProofOption <|>
   blueprintAboveOption <|> blueprintBelowOption <|>
-  blueprintUsesOption <|> blueprintProofUsesOption <|>
   blueprintTitleOption <|>
   blueprintNotReadyOption <|> blueprintWipOption <|>
   blueprintMathlibReadyOption <|>
@@ -146,8 +105,6 @@ You may optionally add:
 - `proof := /-- ... -/`: The proof of the node in LaTeX (default: the docstrings in proof tactics).
 - `above := /-- ... -/`: LaTeX content placed above this node in the blueprint/paper.
 - `below := /-- ... -/`: LaTeX content placed below this node in the blueprint/paper.
-- `uses := [a, "b"]`: The dependencies of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
-- `proofUses := [a, "b"]`: The dependencies of the proof of the node, as Lean constants or LaTeX labels (default: inferred from the used constants).
 - `title := /-- Title -/`: The title of the node in LaTeX.
 - Status options (3 manual flags):
   - `notReady := true`: The node is not ready to formalize (needs more blueprint work).
@@ -199,16 +156,6 @@ def elabBlueprintConfig : Syntax → CoreM Config
       | `(blueprintOption| (below := $doc)) =>
         let below := (← getDocStringText doc).trimAscii.copy
         config := { config with below }
-      | `(blueprintOption| (uses := $uses)) =>
-        let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses
-        config := { config with
-          uses := config.uses ++ uses, excludes := config.excludes ++ excludes,
-          usesLabels := config.usesLabels ++ usesLabels, excludesLabels := config.excludesLabels ++ excludesLabels }
-      | `(blueprintOption| (proofUses := $uses)) =>
-        let (uses, excludes, usesLabels, excludesLabels) ← elabBlueprintUses uses
-        config := { config with
-          proofUses := config.proofUses ++ uses, proofExcludes := config.proofExcludes ++ excludes,
-          proofUsesLabels := config.proofUsesLabels ++ usesLabels, proofExcludesLabels := config.proofExcludesLabels ++ excludesLabels }
       | `(blueprintOption| (title := $str:str)) =>
         config := { config with title := str.getString }
       | `(blueprintOption| (title := $doc:docComment)) =>
@@ -280,16 +227,12 @@ def mkStatementPart (name : Name) (cfg : Config) (hasProof : Bool) : CoreM NodeP
         | _ => if hasProof then pure "theorem" else pure "definition"
   return {
     text := cfg.statement.getD "",
-    uses := cfg.uses, excludes := cfg.excludes,
-    usesLabels := cfg.usesLabels, excludesLabels := cfg.excludesLabels,
     latexEnv := latexEnv
   }
 
 def mkProofPart (_name : Name) (cfg : Config) : CoreM NodePart := do
   return {
     text := cfg.proof.getD "",
-    uses := cfg.proofUses, excludes := cfg.proofExcludes,
-    usesLabels := cfg.proofUsesLabels, excludesLabels := cfg.proofExcludesLabels,
     latexEnv := "proof"
   }
 

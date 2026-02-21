@@ -26,8 +26,6 @@ structure BlueprintInfo where
   title : String := ""
   /-- The LaTeX statement text. -/
   statement : String := ""
-  /-- Names of declared dependencies (from `uses` fields). -/
-  dependencies : Array String := #[]
   /-- Whether this is a key declaration. -/
   keyDeclaration : Bool := false
   /-- User message/notes. -/
@@ -83,12 +81,6 @@ private def nodeToInfo (env : Environment) (node : Node) : BlueprintInfo where
   status := nodeStatusToString (deriveStatus env node)
   title := node.title.getD ""
   statement := node.statement.text
-  dependencies :=
-    let stmtUses := node.statement.uses.map Name.toString
-    let proofUses := match node.proof with
-      | some p => p.uses.map Name.toString
-      | none => #[]
-    stmtUses ++ proofUses
   proof := (node.proof.map (·.text)).getD ""
   keyDeclaration := node.keyDeclaration
   message := node.message.getD ""

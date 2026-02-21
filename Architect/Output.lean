@@ -52,26 +52,25 @@ def InferredUses.empty : InferredUses := { uses := #[], leanOk := true }
 def InferredUses.merge (inferredUsess : Array InferredUses) : InferredUses :=
   { uses := inferredUsess.flatMap (·.uses), leanOk := inferredUsess.all (·.leanOk) }
 
-def NodePart.inferUses (part : NodePart) (latexLabel : String) (used : NameSet) : m InferredUses := do
-  let env ← getEnv
-  let uses := part.uses.foldl (·.insert ·) used |>.filter (· ∉ part.excludes)
-  let mut usesLabels : Std.HashSet String := .ofArray <|
-    uses.toArray.filterMap fun c => (blueprintExt.find? env c).map (·.latexLabel)
-  usesLabels := usesLabels.erase latexLabel
-  usesLabels := part.usesLabels.foldl (·.insert ·) usesLabels |>.filter (· ∉ part.excludesLabels)
-  return { uses := usesLabels.toArray, leanOk := !uses.contains ``sorryAx }
+def NodePart.inferUses (_part : NodePart) (latexLabel : String) (used : NameSet)
+    (resolveLabel : Name → Option String) : InferredUses :=
+  let usesLabels : Std.HashSet String := .ofArray <|
+    used.toArray.filterMap resolveLabel
+  let usesLabels := usesLabels.erase latexLabel
+  { uses := usesLabels.toArray, leanOk := !used.contains ``sorryAx }
 
 /-- Infer the used constants of a node as (statement uses, proof uses). -/
-def Node.inferUses (node : Node) : m (InferredUses × InferredUses) := do
-  let (statementUsed, proofUsed) ← collectUsed node.name
+def Node.inferUses (node : Node) (eligibleNames : NameSet)
+    (resolveLabel : Name → Option String) : m (InferredUses × InferredUses) := do
+  let (statementUsed, proofUsed) ← collectUsed node.name eligibleNames
   if let some proof := node.proof then
     return (
-      ← node.statement.inferUses node.latexLabel statementUsed,
-      ← proof.inferUses node.latexLabel proofUsed
+      node.statement.inferUses node.latexLabel statementUsed resolveLabel,
+      proof.inferUses node.latexLabel proofUsed resolveLabel
     )
   else
     return (
-      ← node.statement.inferUses node.latexLabel (statementUsed ∪ proofUsed),
+      node.statement.inferUses node.latexLabel (statementUsed ∪ proofUsed) resolveLabel,
       InferredUses.empty
     )
 
@@ -136,7 +135,12 @@ def NodeWithPos.toLatex (node : NodeWithPos) : m Latex := do
     | _, _ => ""
   addLatex := addLatex ++ s!"% at {posStr}\n"
 
-  let inferredUsess ← allNodes.mapM (·.inferUses)
+  -- Build eligible set and resolver from blueprintExt for backward compatibility.
+  -- In the Dress pipeline, these are passed from the caller with environment-based construction.
+  let eligibleNames := blueprintExt.getEntries env |>.foldl (fun s (n, _) => s.insert n) ({} : NameSet)
+  let resolveLabel : Name → Option String := fun c =>
+    (blueprintExt.find? env c).map (·.latexLabel)
+  let inferredUsess ← allNodes.mapM (·.inferUses eligibleNames resolveLabel)
   let statementUses := InferredUses.merge (inferredUsess.map (·.1))
   let proofUses := InferredUses.merge (inferredUsess.map (·.2))
 

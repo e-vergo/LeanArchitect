@@ -88,14 +88,6 @@ instance : ToExpr NodeStatus where
 structure NodePart where
   /-- The natural language description of this part. -/
   text : String
-  /-- The specified set of nodes that this node depends on, in addition to inferred ones. -/
-  uses : Array Name
-  /-- The set of nodes to exclude from `uses`. -/
-  excludes : Array Name
-  /-- Additional LaTeX labels of nodes that this node depends on. -/
-  usesLabels : Array String
-  /-- The set of labels to exclude from `usesLabels`. -/
-  excludesLabels : Array String
   /-- The LaTeX environment to use for this part. -/
   latexEnv : String
 deriving Inhabited, Repr, FromJson, ToJson, ToExpr
@@ -218,29 +210,5 @@ def addLeanNameOfLatexLabel (env : Environment) (latexLabel : String) (name : Na
 
 def getLeanNamesOfLatexLabel (env : Environment) (latexLabel : String) : Array Name :=
   latexLabelToLeanNamesExt.getState env |>.findD latexLabel #[]
-
-section ResolveConst
-
-register_option blueprint.ignoreUnknownConstants : Bool := {
-  defValue := false,
-  descr := "Whether to ignore unknown constants in the `uses` and `proofUses` options of the `blueprint` attribute."
-}
-
-/--
-Resolves an identifier using `realizeGlobalConstNoOverloadWithInfo`.
-Ignores unknown constants if `blueprint.ignoreUnknownConstants` is true (default: false).
--/
-def tryResolveConst (id : Ident) : CoreM Name := do
-  try
-    realizeGlobalConstNoOverloadWithInfo id
-  catch ex =>
-    if blueprint.ignoreUnknownConstants.get (← getOptions) then
-      -- logNamedWarningAt id lean.unknownIdentifier ex.toMessageData
-      return id.getId
-    else
-      throwNamedErrorAt id lean.unknownIdentifier
-        "{ex.toMessageData}\n\nThis error can be disabled by `set_option blueprint.ignoreUnknownConstants true`."
-
-end ResolveConst
 
 end Architect
